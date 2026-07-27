@@ -197,5 +197,3 @@ extra:
     - icon: fontawesome/brands/microsoft
       link: https://dev.azure.com/platform/
       name: Azure DevOps
-  analytics:
-    provider: custom
