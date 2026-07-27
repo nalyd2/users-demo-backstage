@@ -1,0 +1,82 @@
+# EditorConfig — https://editorconfig.org
+# Platform Engineering Team — Internal Developer Platform
+# Shared code-style conventions across all platform services.
+
+root = true
+
+# ---------------------------------------------------------------------------
+# All files
+# ---------------------------------------------------------------------------
+[*]
+indent_style            = space
+indent_size             = 4
+end_of_line             = lf
+charset                 = utf-8
+trim_trailing_whitespace = true
+insert_final_newline    = true
+
+# ---------------------------------------------------------------------------
+# .NET / C# solution files
+# ---------------------------------------------------------------------------
+[*.{csproj,sln,xml,props,targets,resx,config,nuspec}]
+indent_style = space
+indent_size  = 2
+
+# ---------------------------------------------------------------------------
+# C# source
+# ---------------------------------------------------------------------------
+[*.{cs,csx}]
+indent_style            = space
+indent_size             = 4
+csharp_new_line_before_open_brace          = all
+csharp_new_line_before_else                = true
+csharp_new_line_before_catch               = true
+csharp_new_line_before_finally             = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_before_members_in_anonymous_types    = true
+csharp_new_line_between_query_expression_clauses    = true
+csharp_indent_case_contents                 = true
+csharp_indent_switch_labels                 = true
+csharp_indent_labels                       = one_less_than_current
+csharp_space_after_cast                     = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_parentheses           = false
+csharp_space_before_colon_in_inheritance_clause          = true
+csharp_space_after_colon_in_inheritance_clause           = true
+csharp_space_around_binary_operators       = before_and_after
+csharp_preserve_single_line_blocks         = true
+csharp_preserve_single_line_statements     = true
+
+# ---------------------------------------------------------------------------
+# Markdown / documentation
+# ---------------------------------------------------------------------------
+[*.{md,mdx}]
+indent_size              = 2
+trim_trailing_whitespace = false
+max_line_length          = 120
+
+# ---------------------------------------------------------------------------
+# YAML
+# ---------------------------------------------------------------------------
+[*.{yaml,yml}]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# JSON
+# ---------------------------------------------------------------------------
+[*.json]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# Docker
+# ---------------------------------------------------------------------------
+[Dockerfile]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# Shell scripts
+# ---------------------------------------------------------------------------
+[*.{sh,bash}]
+indent_size = 2

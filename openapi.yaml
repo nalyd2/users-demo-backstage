@@ -1,0 +1,636 @@
+openapi: "3.1.0"
+info:
+  title: Users API
+  description: |
+    # Users API
+
+    User Lifecycle Management API for the Internal Developer Platform.
+
+    This API provides CRUD operations for user profiles, with JWT-based
+    authentication and role-based access control (RBAC). All endpoints
+    require a valid JWT issued by the Authentication Service.
+
+    ## Key Features
+
+    - **CRUD Operations** — full user lifecycle management
+    - **Multi-Tenancy** — all queries are scoped to the tenant from the JWT
+    - **Role-Based Access Control** — admin, operator, and user roles
+    - **Soft-Delete** — users are never hard-deleted; referential integrity preserved
+    - **Cursor Pagination** — efficient pagination for large user directories
+    - **Event-Driven** — publishes `user.created`, `user.updated`, `user.deleted` events
+
+    ## Authentication
+
+    All requests (except health checks) require a valid JWT:
+    ```
+    Authorization: Bearer <access-token>
+    ```
+
+    JWT validation is performed against the Authentication Service. The token
+    must include the `roles` and `tid` (tenant ID) claims.
+
+    ## Related Resources
+
+    - [Authentication Service API](https://backstage.internal/platform/api/auth-api) — issues the tokens consumed by this API
+
+  version: "2.1.0"
+  contact:
+    name: Platform Engineering Team
+    email: platform-eng@internal.platform
+    url: https://backstage.internal/platform/component/users-service
+  license:
+    name: MIT
+    url: https://dev.azure.com/platform/_git/users-service?path=/LICENSE
+
+servers:
+  - url: https://users.internal.platform
+    description: Production (West Europe)
+  - url: https://users.staging.internal.platform
+    description: Staging
+  - url: https://localhost:7203
+    description: Local Development
+
+tags:
+  - name: Users
+    description: User profile CRUD operations
+  - name: Health
+    description: Service health and readiness probes
+
+paths:
+  # ==========================================================================
+  # GET /api/users
+  # ==========================================================================
+  /api/users:
+    get:
+      tags:
+        - Users
+      operationId: getUsers
+      summary: List users (paginated, filterable)
+      description: |
+        Returns a paginated list of users within the tenant.
+
+        Results are scoped to the tenant extracted from the JWT `tid` claim.
+        Soft-deleted users (`deleted_at IS NOT NULL`) are excluded by default.
+
+        **Required role:** `admin` or `operator`
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of users per page
+        - name: continuationToken
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor for the next page (returned in previous response)
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+          description: Full-text search on username, email, and display name
+        - name: department
+          in: query
+          schema:
+            type: string
+          description: Filter by department name (exact match)
+        - name: role
+          in: query
+          schema:
+            type: string
+          description: Filter by assigned role (exact match)
+        - name: includeDeleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include soft-deleted users in the results
+      responses:
+        "200":
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ==========================================================================
+  # GET /api/users/{userId}
+  # ==========================================================================
+  /api/users/{userId}:
+    get:
+      tags:
+        - Users
+      operationId: getUserById
+      summary: Get a single user by ID
+      description: |
+        Returns a user profile by ID. The requesting user must be in the same
+        tenant and have the `admin`, `operator`, or `user` role.
+
+        Users with the `user` role can only request their own profile (the `sub`
+        claim in the JWT must match `userId`).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique user identifier
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    # ========================================================================
+    # PUT /api/users/{userId}
+    # ========================================================================
+    put:
+      tags:
+        - Users
+      operationId: updateUser
+      summary: Update a user profile
+      description: |
+        Updates a user profile. Admins can update any user; operators can update
+        limited fields; regular users can only update their own profile's contact
+        fields (email, display name).
+
+        Changing the `roles` field requires the `admin` role.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique user identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conflict — username or email already taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+    # ========================================================================
+    # DELETE /api/users/{userId}
+    # ========================================================================
+    delete:
+      tags:
+        - Users
+      operationId: deleteUser
+      summary: Soft-delete a user profile
+      description: |
+        Performs a soft-delete — sets `deleted_at` on the user record without
+        removing the row. This preserves referential integrity for audit logs
+        and event data.
+
+        Requires `admin` role.
+
+        A `user.deleted` event is published.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique user identifier
+      responses:
+        "200":
+          description: User soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ==========================================================================
+  # POST /api/users
+  # ==========================================================================
+  /api/users:
+    post:
+      tags:
+        - Users
+      operationId: createUser
+      summary: Create a new user profile
+      description: |
+        Creates a new user profile in the tenant.
+
+        The `tenant_id` is extracted from the JWT `tid` claim — not from the
+        request body — to prevent cross-tenant injection.
+
+        A `user.created` event is published to trigger welcome emails and
+        downstream synchronization.
+
+        **Required role:** `admin`
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          headers:
+            Location:
+              description: URL of the created user
+              schema:
+                type: string
+                format: uri
+                example: "https://users.internal.platform/api/users/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Conflict — username or email already taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  # ==========================================================================
+  # GET /api/health/*
+  # ==========================================================================
+  /api/health/live:
+    get:
+      tags:
+        - Health
+      operationId: livenessProbe
+      summary: Kubernetes liveness probe
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /api/health/ready:
+    get:
+      tags:
+        - Health
+      operationId: readinessProbe
+      summary: Kubernetes readiness probe
+      description: |
+        Returns 200 only when:
+        - PostgreSQL connection pool is healthy
+        - Auth Service gRPC is reachable (or JWKS cache is valid)
+        - Service Bus connection is alive
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+# ============================================================================
+# Components — Schemas
+# ============================================================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token issued by the Authentication Service.
+        Must include `sub`, `roles`, and `tid` claims.
+
+  schemas:
+    # --- User ---
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        username:
+          type: string
+          example: "john.doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@contoso.com"
+        displayName:
+          type: string
+          example: "John Doe"
+        department:
+          type: string
+          nullable: true
+          example: "Engineering"
+        jobTitle:
+          type: string
+          nullable: true
+          example: "Senior Software Engineer"
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["developer", "project:alpha:read"]
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-01-15T09:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-07-26T10:15:00Z"
+
+    UserListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserResponse"
+        pagination:
+          type: object
+          properties:
+            pageSize:
+              type: integer
+              example: 20
+            continuationToken:
+              type: string
+              nullable: true
+              description: Opaque cursor for the next page. Null if this is the last page.
+              example: "eyJwYWdlIjogMiwgInRpbWVzdGFtcCI6ICIyMDI2LTA3LTI2VDEwOjAwOjAwWiJ9"
+            hasMore:
+              type: boolean
+              description: Whether more pages are available
+              example: true
+        totalCount:
+          type: integer
+          description: Total number of users matching the query (across all pages)
+          example: 156
+
+    # --- Requests ---
+    CreateUserRequest:
+      type: object
+      required:
+        - username
+        - email
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 100
+          pattern: "^[a-z][a-z0-9._-]{2,99}$"
+          description: Unique username within the tenant. Lowercase alphanumeric + dots, underscores, hyphens.
+          example: "john.doe"
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: "john.doe@contoso.com"
+        displayName:
+          type: string
+          maxLength: 200
+          example: "John Doe"
+        department:
+          type: string
+          maxLength: 100
+          example: "Engineering"
+        jobTitle:
+          type: string
+          maxLength: 150
+          example: "Senior Software Engineer"
+        roles:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+          description: Initial role assignments
+          example: ["developer"]
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        displayName:
+          type: string
+          maxLength: 200
+        department:
+          type: string
+          maxLength: 100
+        jobTitle:
+          type: string
+          maxLength: 150
+        roles:
+          type: array
+          items:
+            type: string
+          maxItems: 20
+          description: |
+            Replace current role assignments. **Requires `admin` role.**
+            Operators and regular users cannot modify this field.
+
+    # --- Responses ---
+    DeleteResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "User a1b2c3d4-e5f6-7890-abcd-ef1234567890 has been deleted."
+        deletedAt:
+          type: string
+          format: date-time
+          example: "2026-07-26T10:30:00Z"
+
+    # --- Health ---
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [Healthy, Degraded, Unhealthy]
+          example: "Healthy"
+        checks:
+          type: object
+          properties:
+            postgres:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [Healthy, Unhealthy]
+                latency_ms:
+                  type: number
+              example:
+                status: "Healthy"
+                latency_ms: 1.8
+            auth_service:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [Healthy, Unhealthy]
+                latency_ms:
+                  type: number
+              example:
+                status: "Healthy"
+                latency_ms: 4.2
+            service_bus:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [Healthy, Unhealthy]
+                latency_ms:
+                  type: number
+              example:
+                status: "Healthy"
+                latency_ms: 8.7
+
+    # --- Errors ---
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          example: "https://errors.internal.platform/validation-error"
+        title:
+          type: string
+          example: "Validation Error"
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: "The 'username' field must match the pattern: ^[a-z][a-z0-9._-]{2,99}$"
+        traceId:
+          type: string
+          example: "00-abcdef1234567890abcdef1234567890-abcdef1234567890-01"
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            username: ["Username must start with a lowercase letter."]
+            email: ["A valid email address is required."]
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "https://errors.internal.platform/auth-required"
+            title: "Authentication Required"
+            status: 401
+            detail: "A valid JWT is required. Include an Authorization: Bearer <token> header."
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "https://errors.internal.platform/forbidden"
+            title: "Forbidden"
+            status: 403
+            detail: "The 'admin' role is required to perform this action."
+
+    NotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "https://errors.internal.platform/not-found"
+            title: "User Not Found"
+            status: 404
+            detail: "No user found with the given ID in your tenant."

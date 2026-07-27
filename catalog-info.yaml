@@ -1,0 +1,185 @@
+# ============================================================================
+# Backstage Catalog Entity — Users Service
+# ============================================================================
+# This file registers the users-service component and its associated resources
+# in the Backstage Software Catalog. It follows the Backstage System Model:
+#
+#   System  >  Domain
+#   └─ Component  (this file)
+#      ├─ API  (provided)
+#      └─ Resource  (database)
+#
+# Key relationship: users-service depends on auth-service for JWT validation
+# and consumes authentication events published by auth-service.
+#
+# Reference: https://backstage.io/docs/features/software-catalog/
+# ============================================================================
+
+---
+# ============================================================================
+# 1. API DEFINITION — Users API
+# ============================================================================
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: users-api
+  description: |
+    Users REST API for the Internal Developer Platform.
+    Provides CRUD operations for user profiles with pagination, filtering, and
+    soft-delete support. All endpoints require JWT authentication via the
+    Authentication Service.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/view-url: https://backstage.internal/platform/api/users-api/console
+    backstage.io/edit-url: https://dev.azure.com/platform/_git/users-service?path=/openapi.yaml
+  tags:
+    - users
+    - profiles
+    - crud
+    - identity
+    - rest
+  links:
+    - url: https://dev.azure.com/platform/_git/users-service
+      title: Git Repository
+      icon: github
+    - url: https://backstage.internal/platform/component/users-service/docs
+      title: TechDocs
+      icon: docs
+    - url: https://grafana.internal/d/users/users-service
+      title: Dashboard
+      icon: dashboard
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-engineering
+  system: user-management-system
+  definition:
+    $text: ./openapi.yaml
+
+---
+# ============================================================================
+# 2. COMPONENT DEFINITION — Users Service
+# ============================================================================
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: users-service
+  description: |
+    User Management Service for the Internal Developer Platform.
+    Manages the complete user lifecycle — profile creation, retrieval, update,
+    and soft-delete. Integrates with the Authentication Service for JWT-based
+    access control and consumes authentication events to track user sessions.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    dev.azure.com/project-repo: platform/users-service
+    backstage.io/view-url: https://backstage.internal/platform/component/users-service
+    backstage.io/edit-url: https://dev.azure.com/platform/_git/users-service
+  tags:
+    - dotnet
+    - csharp
+    - users
+    - profiles
+    - rest
+    - platform-service
+  links:
+    - url: https://dev.azure.com/platform/_git/users-service
+      title: Source Code
+      icon: github
+    - url: https://backstage.internal/platform/component/users-service/docs
+      title: Documentation (TechDocs)
+      icon: docs
+    - url: https://grafana.internal/d/users/users-service
+      title: Grafana Dashboard
+      icon: dashboard
+    - url: https://azure.internal/alert/users-service
+      title: Alerts
+      icon: alert
+    - url: https://pagerduty.internal/services/users-service
+      title: On-Call
+      icon: chat
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-engineering
+  system: user-management-system
+  domain: identity
+  subcomponentOf: user-management-system
+  providesApis:
+    - users-api
+  dependsOn:
+    - component:auth-service
+    - resource:users-database
+  consumesApis:
+    - auth-api
+
+---
+# ============================================================================
+# 3. SYSTEM DEFINITION — User Management System
+# ============================================================================
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: user-management-system
+  description: |
+    User Management System of the Internal Developer Platform.
+    Handles the complete user lifecycle — onboarding, profile management,
+    role assignments, and offboarding — across all platform services.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - users
+    - identity
+    - lifecycle
+    - platform
+  links:
+    - url: https://backstage.internal/platform/system/user-management-system
+      title: System Overview
+      icon: dashboard
+spec:
+  owner: platform-engineering
+  domain: identity
+
+---
+# ============================================================================
+# 4. DOMAIN DEFINITION — Identity
+# ============================================================================
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: identity
+  description: |
+    Identity domain covering all user and service authentication, authorization,
+    and identity lifecycle management across the Internal Developer Platform.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+spec:
+  owner: platform-engineering
+
+---
+# ============================================================================
+# 5. RESOURCE DEFINITION — Users Database
+# ============================================================================
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: users-database
+  description: |
+    Primary data store for the Users Service. Stores user profiles, role
+    assignments, and audit records. Partitioned by tenant for multi-tenancy.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - database
+    - postgresql
+    - persistence
+    - multi-tenant
+  links:
+    - url: https://azure.internal/databases/users-db
+      title: Database Dashboard
+      icon: dashboard
+spec:
+  type: database
+  owner: platform-engineering
+  system: user-management-system
+  dependsOn: []
+  lifecycle: production

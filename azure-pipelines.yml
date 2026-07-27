@@ -1,0 +1,212 @@
+# ============================================================================
+# Azure DevOps Pipeline — Users Service
+# ============================================================================
+# CI/CD pipeline that builds, tests, generates documentation artifacts,
+# and publishes them for Backstage consumption.
+#
+# Triggers: Push to main, PR to main
+# ============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/*
+      - generated/*
+      - knowledge/*
+      - "*.md"
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  - name: buildConfiguration
+    value: Release
+  - name: dotnetVersion
+    value: "10.x"
+  - name: imageRepository
+    value: users-service
+  - name: dockerRegistry
+    value: acrplatform.azurecr.io
+
+stages:
+  # ==========================================================================
+  # Stage 1: Restore
+  # ==========================================================================
+  - stage: Restore
+    displayName: "1. Restore Dependencies"
+    jobs:
+      - job: Restore
+        displayName: "Restore NuGet packages"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UseDotNet@2
+            displayName: "Install .NET SDK $(dotnetVersion)"
+            inputs:
+              version: $(dotnetVersion)
+
+          - task: DotNetCoreCLI@2
+            displayName: "dotnet restore"
+            inputs:
+              command: restore
+              projects: src/UsersService/UsersService.csproj
+              restoreArguments: --locked-mode
+
+  # ==========================================================================
+  # Stage 2: Build
+  # ==========================================================================
+  - stage: Build
+    displayName: "2. Build"
+    dependsOn: Restore
+    jobs:
+      - job: Build
+        displayName: "Build Users Service"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UseDotNet@2
+            displayName: "Install .NET SDK $(dotnetVersion)"
+            inputs:
+              version: $(dotnetVersion)
+
+          - task: DotNetCoreCLI@2
+            displayName: "dotnet build"
+            inputs:
+              command: build
+              projects: src/UsersService/UsersService.csproj
+              arguments: >
+                --configuration $(buildConfiguration)
+                --no-restore
+                /p:Deterministic=true
+                /p:ContinuousIntegrationBuild=true
+
+  # ==========================================================================
+  # Stage 3: Test
+  # ==========================================================================
+  - stage: Test
+    displayName: "3. Test"
+    dependsOn: Build
+    jobs:
+      - job: Test
+        displayName: "Run Tests"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UseDotNet@2
+            displayName: "Install .NET SDK $(dotnetVersion)"
+            inputs:
+              version: $(dotnetVersion)
+
+          - task: DotNetCoreCLI@2
+            displayName: "dotnet test"
+            inputs:
+              command: test
+              projects: tests/UsersService.Tests/UsersService.Tests.csproj
+              arguments: >
+                --configuration $(buildConfiguration)
+                --no-build
+                --logger trx
+                --collect:"XPlat Code Coverage"
+                --results-directory $(Agent.TempDirectory)/test-results
+
+          - task: PublishTestResults@2
+            displayName: "Publish test results"
+            inputs:
+              testResultsFormat: VSTest
+              testResultsFiles: "$(Agent.TempDirectory)/test-results/**/*.trx"
+              failTaskOnFailedTests: true
+
+  # ==========================================================================
+  # Stage 4: Generate OpenAPI
+  # ==========================================================================
+  - stage: GenerateOpenAPI
+    displayName: "4. Generate OpenAPI"
+    dependsOn: Test
+    jobs:
+      - job: GenerateOpenAPI
+        displayName: "Bundle and validate OpenAPI spec"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              npm install -g @apidevtools/swagger-cli
+              swagger-cli validate openapi.yaml
+            displayName: "Validate OpenAPI spec"
+
+          - script: |
+              swagger-cli bundle openapi.yaml \
+                --outfile generated/openapi/users-service-openapi.yaml \
+                --type yaml
+            displayName: "Bundle OpenAPI spec"
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish OpenAPI artifact"
+            inputs:
+              targetPath: generated/openapi/
+              artifactName: openapi-specs
+
+  # ==========================================================================
+  # Stage 5: Generate TechDocs
+  # ==========================================================================
+  - stage: GenerateTechDocs
+    displayName: "5. Generate TechDocs"
+    dependsOn: Test
+    jobs:
+      - job: GenerateTechDocs
+        displayName: "Build MkDocs site"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              pip install mkdocs-material mkdocs-mermaid2-plugin
+            displayName: "Install MkDocs dependencies"
+
+          - script: |
+              mkdocs build --clean --site-dir generated/techdocs
+            displayName: "Build TechDocs site"
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish TechDocs artifact"
+            inputs:
+              targetPath: generated/techdocs/
+              artifactName: techdocs
+
+  # ==========================================================================
+  # Stage 6: Publish Artifacts
+  # ==========================================================================
+  - stage: Publish
+    displayName: "6. Publish Artifacts"
+    dependsOn:
+      - GenerateOpenAPI
+      - GenerateTechDocs
+    jobs:
+      - job: PublishDocker
+        displayName: "Build and push Docker image"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: Docker@2
+            displayName: "docker build"
+            inputs:
+              command: build
+              repository: $(imageRepository)
+              dockerfile: Dockerfile
+              tags: |
+                $(Build.BuildNumber)
+                latest
+              arguments: --platform linux/amd64
+
+          - task: Docker@2
+            displayName: "docker push"
+            inputs:
+              command: push
+              repository: $(imageRepository)
+              containerRegistry: $(dockerRegistry)
+              tags: |
+                $(Build.BuildNumber)
+                latest

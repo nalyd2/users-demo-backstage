@@ -1,0 +1,201 @@
+# ============================================================================
+# MkDocs / TechDocs Configuration — Users Service
+# ============================================================================
+# TechDocs renders this mkdocs.yml in Backstage using the Material for MkDocs
+# theme. All documentation under docs/ is published automatically.
+#
+# Reference: https://backstage.io/docs/features/techdocs/
+#            https://squidfunk.github.io/mkdocs-material/
+# ============================================================================
+
+site_name: Users Service
+site_description: >-
+  User Management Service for the Internal Developer Platform.
+  Complete user lifecycle — CRUD profiles, role assignments, and event-driven
+  integration with the Authentication Service.
+site_author: Platform Engineering Team
+
+repo_name: platform/users-service
+repo_url: https://dev.azure.com/platform/_git/users-service
+edit_uri: edit/main/docs/
+
+# ---------------------------------------------------------------------------
+# Theme — Material for MkDocs
+# ---------------------------------------------------------------------------
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+    - toc.integrate
+  icon:
+    repo: fontawesome/brands/git-alt
+  favicon: assets/favicon.ico
+  logo: assets/logo.svg
+
+# ---------------------------------------------------------------------------
+# Plugins
+# ---------------------------------------------------------------------------
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-,:!=\[\]()"/]+'
+  - mermaid2:
+      arguments:
+        theme: |
+          dark ? 'dark' : 'default'
+        securityLevel: sandbox
+      javascript: https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js
+
+# ---------------------------------------------------------------------------
+# Extensions
+# ---------------------------------------------------------------------------
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite:
+      guess_lang: false
+      linenums: true
+  - meta
+  - toc:
+      permalink: true
+      permalink_title: Anchor link to this section
+  - tables
+  - footnotes
+  - def_list
+  - abbr
+  - md_in_html
+  - sane_lists
+
+  # PyMdown Extensions (Material)
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: platform
+      repo: users-service
+  - pymdownx.mark
+  - pymdownx.saneheaders
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# ---------------------------------------------------------------------------
+# Navigation — matches the docs/ directory structure
+# ---------------------------------------------------------------------------
+nav:
+  - Home: index.md
+
+  - Architecture:
+      - Overview: architecture/overview.md
+      - System Context: architecture/context.md
+      - Container View: architecture/containers.md
+      - Component View: architecture/components.md
+      - Deployment View: architecture/deployment-view.md
+      - Security Architecture: architecture/security.md
+      - Technology Stack: architecture/technology-stack.md
+
+  - API Reference:
+      - Users API: api/users-api.md
+      - Events: api/events.md
+      - Variables & Configuration: api/variables.md
+
+  - Runbooks:
+      - Restart Service: runbooks/restart-service.md
+      - Deployment: runbooks/deployment.md
+      - Incident Response: runbooks/incident-response.md
+      - Rollback: runbooks/rollback.md
+      - Operations: runbooks/operations.md
+
+  - Onboarding:
+      - Developer Guide: onboarding/developer-guide.md
+      - Local Development: onboarding/local-development.md
+      - How to Debug: onboarding/how-to-debug.md
+      - Testing: onboarding/testing.md
+
+  - Architecture Decisions:
+      - ADR-001 — PostgreSQL over MongoDB: adr/ADR-001.md
+      - ADR-002 — JWT Validation at Gateway: adr/ADR-002.md
+      - ADR-003 — Event-Driven User Sync: adr/ADR-003.md
+
+  - Decisions & Standards:
+      - Coding Standards: decisions/coding-standards.md
+      - Branching Strategy: decisions/branching.md
+      - Versioning: decisions/versioning.md
+      - Security Guidelines: decisions/security-guidelines.md
+      - Observability: decisions/observability.md
+      - Dependencies: decisions/dependencies.md
+      - Ownership: decisions/ownership.md
+      - Monitoring: decisions/monitoring.md
+      - Roadmap: decisions/roadmap.md
+      - Future Integrations: decisions/future-integrations.md
+      - Risks: decisions/risks.md
+      - Known Limitations: decisions/known-limitations.md
+      - Glossary: decisions/glossary.md
+
+# ---------------------------------------------------------------------------
+# Extra configuration
+# ---------------------------------------------------------------------------
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/microsoft
+      link: https://dev.azure.com/platform/
+      name: Azure DevOps
+  analytics:
+    provider: custom
