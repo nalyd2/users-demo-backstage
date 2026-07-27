@@ -1,100 +1,100 @@
-# Service Ownership Model — Users Service
+# Modelo de Propiedad del Servicio — Users Service
 
-- **Status:** Approved
-- **Date:** 2026-07-20
-- **Decision-makers:** Platform Engineering Team, Engineering Leadership
+- **Estado:** Aprobado
+- **Fecha:** 2026-07-20
+- **Tomadores de decisión:** Equipo de Platform Engineering, Liderazgo de Ingeniería
 
-## Owning Team
+## Equipo Propietario
 
-**Platform Engineering** is the sole owning team for the Users Service, co-owned with the Auth Service under the same team's responsibility.
+**Platform Engineering** es el único equipo propietario del Users Service, copropietario junto con el Auth Service bajo la misma responsabilidad del equipo.
 
-| Role | Name / Handle |
+| Rol | Nombre / Handle |
 |---|---|
-| Primary Owner | (TBD) |
-| Secondary Owner | (TBD) |
-| Team Lead | (TBD) |
+| Propietario Principal | (TBD) |
+| Propietario Secundario | (TBD) |
+| Líder del Equipo | (TBD) |
 
-**Scope of ownership:**
-- Full lifecycle: architecture, implementation, testing, deployment, observability, capacity planning.
-- All components: API, event consumers, background workers, database schema.
-- Tenant configuration and multi-tenancy support.
-- RBAC model and permission definitions.
-- Integration with Auth Service (JWT validation) and Microsoft Graph API.
+**Alcance de la propiedad:**
+- Ciclo de vida completo: arquitectura, implementación, pruebas, despliegue, observabilidad, planificación de capacidad.
+- Todos los componentes: API, consumidores de eventos, trabajadores en segundo plano, esquema de base de datos.
+- Configuración de inquilino y soporte de multi-tenencia.
+- Modelo RBAC y definiciones de permisos.
+- Integración con Auth Service (validación JWT) y Microsoft Graph API.
 
-## Contact Channels
+## Canales de Contacto
 
-| Channel | Address | Purpose |
+| Canal | Dirección | Propósito |
 |---|---|---|
-| GitHub Issues | `users-demo-backstage/issues` | Bug reports, feature requests |
-| Pull Requests | `users-demo-backstage/pulls` | Code changes |
-| Slack | `#platform-engineering` | Real-time questions, coordination |
-| Email | `platform-engineering@company.com` | Formal requests, security disclosures |
-| Office Hours | Thursdays 15:00-16:00 UTC | Drop-in support |
+| GitHub Issues | `users-demo-backstage/issues` | Reportes de errores, solicitudes de características |
+| Pull Requests | `users-demo-backstage/pulls` | Cambios de código |
+| Slack | `#platform-engineering` | Preguntas en tiempo real, coordinación |
+| Correo Electrónico | `platform-engineering@company.com` | Solicitudes formales, divulgaciones de seguridad |
+| Horario de Oficina | Jueves 15:00-16:00 UTC | Soporte sin cita previa |
 
-## On-Call Rotation
+## Rotación de Guardia
 
-- **Schedule:** Weekly, Monday-to-Monday, rotating among Platform Engineering members.
-- **Coverage:** 24x7 during on-call week.
-- **Pager:** PagerDuty schedule `plateng-users-service`. Alerts on:
-  - Production P0/P1 incidents.
-  - Auth Service dependency alerts (Users Service cannot function without Auth Service).
-  - High error rate or event processing lag.
-- **Hand-off:** Every Monday at 09:00 UTC with written summary in Slack.
+- **Horario:** Semanal, de lunes a lunes, rotando entre miembros de Platform Engineering.
+- **Cobertura:** 24x7 durante la semana de guardia.
+- **Pager:** Horario de PagerDuty `plateng-users-service`. Alertas sobre:
+  - Incidentes de producción P0/P1.
+  - Alertas de dependencia del Auth Service (Users Service no puede funcionar sin Auth Service).
+  - Alta tasa de error o retraso en el procesamiento de eventos.
+- **Transferencia:** Cada lunes a las 09:00 UTC con resumen escrito en Slack.
 
-## Escalation Path
+## Ruta de Escalación
 
-| Tier | Responder | Response Time | Trigger |
+| Nivel | Respondedor | Tiempo de Respuesta | Disparador |
 |---|---|---|---|
-| T1 | On-call Platform Engineer | <= 15 min | PagerDuty alert, P0/P1 incident |
-| T2 | Platform Engineering Team Lead | <= 30 min | T1 not resolved in 45 min |
-| T3 | Director of Engineering | <= 60 min | T2 not resolved, customer-facing outage |
-| T4 | VP Engineering | <= 120 min | Extended outage exceeding SLO error budget |
+| T1 | Ingeniero de Platform de guardia | <= 15 min | Alerta de PagerDuty, incidente P0/P1 |
+| T2 | Líder del Equipo de Platform Engineering | <= 30 min | T1 no resuelto en 45 min |
+| T3 | Director de Ingeniería | <= 60 min | T2 no resuelto, interrupción visible para el cliente |
+| T4 | VP de Ingeniería | <= 120 min | Interrupción prolongada que excede el presupuesto de errores del SLO |
 
-## Contribution Guidelines for External Teams
+## Directrices de Contribución para Equipos Externos
 
-1. **Pull request required** — reviewed by primary or secondary owner.
-2. **Issue first** — open a GitHub issue describing the proposal before coding.
-3. **Follow conventions** — coding standards, linting, validation.
-4. **Branch naming** — `feat/`, `fix/`, `docs/` prefixes.
-5. **Commit messages** — Conventional Commits format.
-6. **No new runtime dependencies** without prior discussion.
-7. **SLO commitment** — owning team may revert changes that negatively affect SLOs.
+1. **Pull request requerido** — revisado por el propietario principal o secundario.
+2. **Issue primero** — abrir un issue de GitHub describiendo la propuesta antes de codificar.
+3. **Seguir convenciones** — estándares de codificación, linting, validación.
+4. **Nomenclatura de ramas** — prefijos `feat/`, `fix/`, `docs/`.
+5. **Mensajes de commit** — formato Conventional Commits.
+6. **Sin nuevas dependencias en tiempo de ejecución** sin discusión previa.
+7. **Compromiso SLO** — el equipo propietario puede revertir cambios que afecten negativamente los SLOs.
 
-## Service Level Objectives
+## Objetivos de Nivel de Servicio (SLO)
 
-### Availability
+### Disponibilidad
 
-| Indicator | Target | Measurement |
+| Indicador | Objetivo | Medición |
 |---|---|---|
-| Uptime (health endpoint) | >= 99.95% | External synthetic probe every 60s |
-| API success rate | >= 99.5% | Ratio of 2xx/4xx/5xx responses |
+| Tiempo de actividad (endpoint de salud) | >= 99.95% | Sonda sintética externa cada 60s |
+| Tasa de éxito de API | >= 99.5% | Proporción de respuestas 2xx/4xx/5xx |
 
-### Latency (p99)
+### Latencia (p99)
 
-| Endpoint | Target |
+| Endpoint | Objetivo |
 |---|---|
-| User CRUD (single) | <= 300 ms |
-| User list (paginated) | <= 500 ms |
-| Event processing | <= 100 ms per event |
-| Graph API enrichment | <= 1000 ms (async, non-blocking) |
+| CRUD de usuario (individual) | <= 300 ms |
+| Lista de usuarios (paginada) | <= 500 ms |
+| Procesamiento de eventos | <= 100 ms por evento |
+| Enriquecimiento de Graph API | <= 1000 ms (asíncrono, no bloqueante) |
 
-### Freshness
+### Frescura
 
-| Indicator | Target |
+| Indicador | Objetivo |
 |---|---|
-| Auth event consumption lag | <= 15 seconds |
-| User event propagation | <= 10 seconds |
+| Retraso de consumo de eventos de auth | <= 15 segundos |
+| Propagación de eventos de usuario | <= 10 segundos |
 
-## Error Budget
+## Presupuesto de Errores
 
-- Monthly error budget: 100% - 99.95% = ~21 minutes of allowed downtime.
-- Budget tracked in Grafana dashboard `users-service-error-budget`.
-- When error budget falls below 20%, non-critical changes are frozen.
-- When exhausted, blameless postmortem and recovery plan required.
+- Presupuesto de errores mensual: 100% - 99.95% = ~21 minutos de tiempo de inactividad permitido.
+- Presupuesto rastreado en el panel de Grafana `users-service-error-budget`.
+- Cuando el presupuesto de errores cae por debajo del 20%, los cambios no críticos se congelan.
+- Cuando se agota, se requiere postmortem sin culpa y plan de recuperación.
 
-## Monitoring & Alerting
+## Monitoreo y Alertas
 
-- All SLOs instrumented via Prometheus metrics (`users_*`).
-- Alerts in PagerDuty on critical burn rate.
-- Dashboards in `Users Service` folder in Grafana.
-- Separate dashboard for auth event processing lag and Graph API health.
+- Todos los SLOs instrumentados mediante métricas de Prometheus (`users_*`).
+- Alertas en PagerDuty sobre tasa de consumo crítico.
+- Paneles en la carpeta `Users Service` en Grafana.
+- Panel separado para retraso de procesamiento de eventos de auth y salud de Graph API.

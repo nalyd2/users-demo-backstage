@@ -1,117 +1,117 @@
-# Operations Runbook — Users Service
+# Runbook de operaciones -- Users Service
 
-**Service:** `users-service`
-**Domain:** User Lifecycle Management
-**Owner:** Platform Engineering Team
-**Lifecycle:** Production
-**SLA Target:** 99.95% availability
-**On-Call:** PagerDuty — `#platform-eng` escalation policy (15 min response)
-
----
-
-## Table of Contents
-
-1. [Purpose and Scope](#1-purpose-and-scope)
-2. [Routine Maintenance Tasks](#2-routine-maintenance-tasks)
-3. [Entra ID Sync Monitoring](#3-entra-id-sync-monitoring)
-4. [Soft-Delete Purging](#4-soft-delete-purging)
-5. [Capacity Planning](#5-capacity-planning)
-6. [Performance Tuning](#6-performance-tuning)
-7. [Backup Verification](#7-backup-verification)
-8. [Health Check Monitoring](#8-health-check-monitoring)
-9. [Runbook Automation](#9-runbook-automation)
-10. [Escalation and Support](#10-escalation-and-support)
+**Servicio:** `users-service`
+**Dominio:** Gestion del ciclo de vida del usuario
+**Propietario:** Equipo de Ingenieria de Plataforma
+**Ciclo de vida:** Produccion
+**Objetivo de SLA:** 99.95% de disponibilidad
+**Guardia:** PagerDuty — politica de escalamiento `#platform-eng` (respuesta en 15 min)
 
 ---
 
-## 1. Purpose and Scope
+## Tabla de Contenidos
 
-This runbook documents the recurring operational procedures for the Users Service. It is intended for Platform Engineering team members, SREs, and on-call engineers who manage the service in production.
+1. [Proposito y alcance](#1-proposito-y-alcance)
+2. [Tareas de mantenimiento rutinario](#2-tareas-de-mantenimiento-rutinario)
+3. [Monitoreo de sincronizacion de Entra ID](#3-monitoreo-de-sincronizacion-de-entra-id)
+4. [Purga de eliminacion suave](#4-purga-de-eliminacion-suave)
+5. [Planificacion de capacidad](#5-planificacion-de-capacidad)
+6. [Ajuste de rendimiento](#6-ajuste-de-rendimiento)
+7. [Verificacion de copias de seguridad](#7-verificacion-de-copias-de-seguridad)
+8. [Monitoreo de verificaciones de salud](#8-monitoreo-de-verificaciones-de-salud)
+9. [Automatizacion de runbooks](#9-automatizacion-de-runbooks)
+10. [Escalamiento y soporte](#10-escalamiento-y-soporte)
 
-All procedures assume authenticated access to the following consoles:
+---
 
-| Console | URL |
+## 1. Proposito y alcance
+
+Este runbook documenta los procedimientos operativos recurrentes para el Users Service. Esta destinado a miembros del Equipo de Ingenieria de Plataforma, SREs e ingenieros de guardia que gestionan el servicio en produccion.
+
+Todos los procedimientos asumen acceso autenticado a las siguientes consolas:
+
+| Consola | URL |
 |---|---|
-| Azure Portal | `https://portal.azure.com/` — subscription `Platform-Prod` |
-| Azure DevOps | `https://dev.azure.com/platform/` — project `platform` |
+| Azure Portal | `https://portal.azure.com/` — suscripcion `Platform-Prod` |
+| Azure DevOps | `https://dev.azure.com/platform/` — proyecto `platform` |
 | Grafana | `https://grafana.internal/d/users/users-service` |
 | Kibana | `https://kibana.internal/s/platform` |
 | Backstage | `https://backstage.internal/platform/component/users-service` |
 
-**Prerequisites for all procedures:**
+**Requisitos previos para todos los procedimientos:**
 
-- Azure CLI (`az`) logged into the `Platform-Prod` subscription
-- `kubectl` configured with the production AKS cluster context (`aks-platform-prod`)
-- Access to Azure Key Vault `kv-platform-users-prod`
-- Membership in the `platform-engineering` Azure AD group
-- `psql` client (PostgreSQL 16 compatible) installed on the jumpbox
-- `jq` for JSON parsing
+- CLI de Azure (`az`) iniciada sesion en la suscripcion `Platform-Prod`
+- `kubectl` configurado con el contexto del cluster AKS de produccion (`aks-platform-prod`)
+- Acceso a Azure Key Vault `kv-platform-users-prod`
+- Membresia en el grupo de Azure AD `platform-engineering`
+- Cliente `psql` (compatible con PostgreSQL 16) instalado en el jumpbox
+- `jq` para analisis JSON
 
 ---
 
-## 2. Routine Maintenance Tasks
+## 2. Tareas de mantenimiento rutinario
 
-Routine maintenance follows a tiered cadence: daily checks performed by the on-call engineer, weekly reviews by the service team, and monthly deeper audits.
+El mantenimiento rutinario sigue una cadencia escalonada: verificaciones diarias realizadas por el ingeniero de guardia, revisiones semanales por el equipo del servicio y auditorias mensuales mas profundas.
 
-### 2.1 Daily Tasks (On-Call)
+### 2.1 Tareas diarias (guardia)
 
-| Time | Task | Tool | Duration |
+| Hora | Tarea | Herramienta | Duracion |
 |---|---|---|---|
-| 09:00 | Review dashboards for anomalies | Grafana | 10 min |
-| 09:15 | Check PagerDuty for overnight alerts | PagerDuty | 5 min |
-| 09:30 | Verify all pods are `Running` and healthy | `kubectl` | 5 min |
-| 09:45 | Confirm readiness probe passes on all endpoints | Grafana / cURL | 5 min |
-| 10:00 | Check Entra ID sync health | Grafana | 5 min |
+| 09:00 | Revisar dashboards en busca de anomalias | Grafana | 10 min |
+| 09:15 | Verificar PagerDuty en busca de alertas nocturnas | PagerDuty | 5 min |
+| 09:30 | Verificar que todos los pods esten `Running` y saludables | `kubectl` | 5 min |
+| 09:45 | Confirmar que la sonda de readiness pase en todos los endpoints | Grafana / cURL | 5 min |
+| 10:00 | Verificar la salud de la sincronizacion de Entra ID | Grafana | 5 min |
 
-**Daily dashboard review checklist:**
+**Lista de verificacion de revision diaria del dashboard:**
 
-1. Open the Users Service dashboard in Grafana (`https://grafana.internal/d/users/users-service`).
-2. Verify the following metrics are within baseline:
+1. Abrir el dashboard de Users Service en Grafana (`https://grafana.internal/d/users/users-service`).
+2. Verificar que las siguientes metricas esten dentro de la linea base:
 
-   | Metric | Alert Threshold | Notes |
+   | Metrica | Umbral de alerta | Notas |
    |---|---|---|
-   | Request rate (p50/p95/p99) | p95 > 800ms | Higher than auth due to DB queries |
-   | Error rate (4xx and 5xx) | > 1% of total requests | 4xx from auth failures are expected |
-   | PostgreSQL connection count | > 80% of `max_connections` | Currently 50 per pool |
-   | Graph API call latency | p99 > 2s | Throttling may need investigation |
-   | Event bus backlog | > 1,000 unconsumed messages | Indicates consumer lag |
-   | Soft-delete purge job errors | Any failure in last 24h | Critical for PII compliance |
+   | Tasa de solicitudes (p50/p95/p99) | p95 > 800ms | Mayor que auth debido a consultas de BD |
+   | Tasa de error (4xx y 5xx) | > 1% del total de solicitudes | 4xx de fallos de autenticacion son esperados |
+   | Conteo de conexiones PostgreSQL | > 80% de `max_connections` | Actualmente 50 por pool |
+   | Latencia de llamadas a Graph API | p99 > 2s | La limitacion puede necesitar investigacion |
+   | Backlog del bus de eventos | > 1,000 mensajes no consumidos | Indica retraso del consumidor |
+   | Errores del trabajo de purga de eliminacion suave | Cualquier fallo en las ultimas 24h | Critico para cumplimiento de PII |
 
-3. Check the `users-service` logs in Kibana for structured error patterns (`"@level": "Error"` or `"@level": "Fatal"`).
-4. Verify the nightly Entra ID sync completed successfully (see Section 3).
+3. Verificar los logs de `users-service` en Kibana para patrones de error estructurados (`"@level": "Error"` o `"@level": "Fatal"`).
+4. Verificar que la sincronizacion nocturna de Entra ID se completo exitosamente (ver Seccion 3).
 
-**Kubernetes pod verification:**
+**Verificacion de pods de Kubernetes:**
 
 ```bash
-# Switch to the production AKS cluster
+# Cambiar al cluster AKS de produccion
 kubectl config use-context aks-platform-prod
 
-# Check pod status across all availability zones
+# Verificar el estado de los pods en todas las zonas de disponibilidad
 kubectl get pods -n idp-system -l app=users-service -o wide
 
-# Expected output: 9 pods (3 per zone × 3 zones), all status "Running"
+# Salida esperada: 9 pods (3 por zona x 3 zonas), todos con estado "Running"
 
-# Inspect any CrashLoopBackOff or Pending pods
+# Inspeccionar cualquier pod CrashLoopBackOff o Pending
 kubectl describe pod -n idp-system -l app=users-service | grep -A 5 "Status:"
 
-# Quick health check across all pods
+# Verificacion rapida de salud en todos los pods
 kubectl get endpoints -n idp-system users-service
 ```
 
-### 2.2 Weekly Tasks (Service Team)
+### 2.2 Tareas semanales (Equipo del servicio)
 
-| Task | Frequency | Owner |
+| Tarea | Frecuencia | Propietario |
 |---|---|---|
-| Review event consumer lag and dead-letter queue | Weekly (Mon) | Platform engineer |
-| Analyze slow-query log from PostgreSQL | Weekly (Tue) | Backend engineer |
-| Verify Graph API throttling and quota consumption | Weekly (Wed) | Platform engineer |
-| Review soft-delete purge job logs and metrics | Weekly (Thu) | Backend engineer |
-| Review dependency vulnerability scan results | Weekly (Fri) | Team rotation |
+| Revisar el retraso del consumidor de eventos y la cola de mensajes fallidos | Semanal (Lun) | Ingeniero de plataforma |
+| Analizar el log de consultas lentas de PostgreSQL | Semanal (Mar) | Ingeniero backend |
+| Verificar la limitacion de Graph API y el consumo de cuota | Semanal (Mie) | Ingeniero de plataforma |
+| Revisar logs y metricas del trabajo de purga de eliminacion suave | Semanal (Jue) | Ingeniero backend |
+| Revisar resultados de escaneo de vulnerabilidades de dependencias | Semanal (Vie) | Rotacion del equipo |
 
-**Event consumer lag review:**
+**Revision del retraso del consumidor de eventos:**
 
 ```bash
-# Check Service Bus subscription metrics via Azure CLI
+# Verificar metricas de suscripcion de Service Bus mediante CLI de Azure
 az servicebus topic subscription show \
   --resource-group platform-prod-rg \
   --namespace-name sb-platform-prod \
@@ -119,9 +119,9 @@ az servicebus topic subscription show \
   --subscription-name users-service \
   --query "{activeMessageCount:countDetails.activeMessageCount, deadLetterCount:countDetails.deadLetteredMessageCount, scheduledCount:countDetails.scheduledMessageCount}"
 
-# Expected: activeMessageCount < 100 during business hours, approaching 0 during low-traffic periods
+# Esperado: activeMessageCount < 100 durante horas laborales, acercandose a 0 durante periodos de bajo trafico
 
-# Inspect dead-lettered messages (if any)
+# Inspeccionar mensajes fallidos (si los hay)
 az servicebus topic subscription show \
   --resource-group platform-prod-rg \
   --namespace-name sb-platform-prod \
@@ -129,22 +129,22 @@ az servicebus topic subscription show \
   --subscription-name users-service \
   --query "deadLetteringOnMessageExpiration"
 
-# If dead-letter count exceeds 50, investigate:
-#   - Message deserialization errors (check Kibana for EventProcessor errors)
-#   - Poison messages (check message body and dead-letter reason)
-#   - Processing timeouts (message lock duration default: 30s)
+# Si el conteo de mensajes fallidos supera 50, investigar:
+#   - Errores de deserializacion de mensajes (verificar Kibana para errores de EventProcessor)
+#   - Mensajes envenenados (verificar cuerpo del mensaje y motivo de mensaje fallido)
+#   - Timeouts de procesamiento (duracion predeterminada de bloqueo de mensaje: 30s)
 ```
 
-**PostgreSQL slow query analysis:**
+**Analisis de consultas lentas de PostgreSQL:**
 
 ```sql
--- Log into the production PostgreSQL server (credentials from Key Vault)
--- PGPASSWORD retrieved via: az keyvault secret show ...
+-- Iniciar sesion en el servidor PostgreSQL de produccion (credenciales de Key Vault)
+-- PGPASSWORD recuperada mediante: az keyvault secret show ...
 
 SELECT
   queryid,
   calls,
-  total_exec_time / 1000 AS total_seconds,
+  total_exec_time / 1000 AS total_segundos,
   mean_exec_time / 1000 AS mean_ms,
   rows,
   shared_blks_hit,
@@ -155,149 +155,149 @@ ORDER BY total_exec_time DESC
 LIMIT 20;
 ```
 
-Frequent offenders to watch for:
+Infractores frecuentes a vigilar:
 
-- Queries missing the `tenant_id` filter (should never happen — RLS enforces this, but a full scan wastes I/O).
-- Queries against `users` table without index on `(tenant_id, deleted_at)` — the soft-delete filter must use this composite index.
-- Queries on `user_sessions` that do not filter by `tenant_id` and `user_id`.
+- Consultas que faltan el filtro `tenant_id` (nunca deberia suceder — RLS lo aplica, pero un escaneo completo desperdicia E/S).
+- Consultas contra la tabla `users` sin indice en `(tenant_id, deleted_at)` — el filtro de eliminacion suave debe usar este indice compuesto.
+- Consultas en `user_sessions` que no filtran por `tenant_id` y `user_id`.
 
-### 2.3 Monthly Tasks
+### 2.3 Tareas mensuales
 
-| Task | Expected Duration |
+| Tarea | Duracion esperada |
 |---|---|
-| Capacity review and scaling plan adjustment | 45 min |
-| Disaster recovery drill — failover to North Europe | 60 min |
-| TLS certificate expiry audit (all layers) | 20 min |
-| Entra ID sync account token rotation verification | 30 min |
-| Dependency patch cycle (minor updates) | 120 min |
-| Soft-delete purge runbook exercise in staging | 30 min |
+| Revision de capacidad y ajuste del plan de escalado | 45 min |
+| Ejercicio de recuperacion ante desastres — conmutacion por error a North Europe | 60 min |
+| Auditoria de vencimiento de certificados TLS (todas las capas) | 20 min |
+| Verificacion de rotacion de token de cuenta de sincronizacion de Entra ID | 30 min |
+| Ciclo de parches de dependencias (actualizaciones menores) | 120 min |
+| Ejercicio de runbook de purga de eliminacion suave en staging | 30 min |
 
-**Monthly capacity checklist:**
+**Lista de verificacion mensual de capacidad:**
 
 ```bash
-# 1. Review HPA metrics over the trailing 30 days
+# 1. Revisar metricas de HPA en los ultimos 30 dias
 kubectl get hpa users-service -n idp-system -o yaml
 
-# 2. Check cluster autoscaler events
+# 2. Verificar eventos del autoscaler del cluster
 kubectl get events -n kube-system --field-selector reason=TriggeredAutoscaler \
   --sort-by=.lastTimestamp
 
-# 3. Review PostgreSQL storage growth
+# 3. Revisar el crecimiento de almacenamiento de PostgreSQL
 az postgres flexible-server show \
   --name pg-users-prod \
   --resource-group platform-prod-rg \
   --query "{storageUsed:storage.storageUsedGB, storageLimit:storage.storageSizeGB, backupRetention:backup.backupRetentionDays}"
 ```
 
-### 2.4 Quarterly Tasks
+### 2.4 Tareas trimestrales
 
-| Task | Expected Duration |
+| Tarea | Duracion esperada |
 |---|---|
-| Full disaster recovery exercise | 4 hours |
-| Performance benchmark regression test | 2 hours |
-| Access review — Key Vault, PostgreSQL, Kubernetes RBAC | 1 hour |
-| Entra ID sync end-to-end validation | 1 hour |
-| Architecture review meeting | 1 hour |
-| PostgreSQL connection string rotation | 30 min |
+| Ejercicio completo de recuperacion ante desastres | 4 horas |
+| Prueba de regresion de referencia de rendimiento | 2 horas |
+| Revision de accesos — Key Vault, PostgreSQL, RBAC de Kubernetes | 1 hora |
+| Validacion de extremo a extremo de sincronizacion de Entra ID | 1 hora |
+| Reunion de revision de arquitectura | 1 hora |
+| Rotacion de cadena de conexion de PostgreSQL | 30 min |
 
 ---
 
-## 3. Entra ID Sync Monitoring
+## 3. Monitoreo de sincronizacion de Entra ID
 
-### 3.1 Overview
+### 3.1 Descripcion general
 
-The Users Service enriches user profiles from **Microsoft Entra ID (Azure AD)** via the Microsoft Graph API. The sync runs on a configurable schedule (default: nightly at 02:00 UTC, cron `0 2 * * *`) and is controlled by the `GraphApiSync.Enabled` feature flag.
+El Users Service enriquece los perfiles de usuario desde **Microsoft Entra ID (Azure AD)** mediante Microsoft Graph API. La sincronizacion se ejecuta en un horario configurable (predeterminado: nocturno a las 02:00 UTC, cron `0 2 * * *`) y esta controlada por el feature flag `GraphApiSync.Enabled`.
 
-**Sync flow:**
+**Flujo de sincronizacion:**
 
 ```
-1. Sync trigger fires (timer or manual)
-2. Fetch all active users from PostgreSQL
-3. For each user, call Microsoft Graph API (GET /users/{id})
-4. Update profile fields: display_name, department, job_title, mobile_phone
-5. Log discrepancies (users in DB but not in Entra ID, and vice versa)
-6. Emit users.sync.completed event with summary
+1. El disparador de sincronizacion se activa (temporizador o manual)
+2. Obtener todos los usuarios activos de PostgreSQL
+3. Para cada usuario, llamar a Microsoft Graph API (GET /users/{id})
+4. Actualizar campos del perfil: display_name, department, job_title, mobile_phone
+5. Registrar discrepancias (usuarios en BD pero no en Entra ID, y viceversa)
+6. Emitir evento users.sync.completed con resumen
 ```
 
-**Important:** Entra ID is the authoritative source for corporate identity. The Users Service never pushes profile data upstream — it only reads.
+**Importante:** Entra ID es la fuente autoritativa para la identidad corporativa. El Users Service nunca envia datos de perfil corriente arriba — solo lee.
 
-### 3.2 Sync Health Dashboard
+### 3.2 Dashboard de salud de sincronizacion
 
-The Grafana dashboard `Users / Entra ID Sync` tracks the following panels:
+El dashboard de Grafana `Users / Entra ID Sync` rastrea los siguientes paneles:
 
-| Panel | Metric | Warning | Critical |
+| Panel | Metrica | Advertencia | Critico |
 |---|---|---|---|
-| **Sync Success Rate** | `graph_api_sync_success_total / graph_api_sync_attempts_total` | < 99% | < 95% |
-| **Sync Duration** | `graph_api_sync_duration_seconds` | > 10 min | > 20 min |
-| **Update Count** | `graph_api_users_updated_total` over last run | 0 (no changes) | N/A (zero is valid at night) |
-| **Error Breakdown** | `graph_api_errors_total` by `error_code` label | > 5 errors | > 20 errors |
-| **Throttle Status** | `graph_api_throttled_requests_total` | > 0 | > 10 in 5 min |
-| **Entra ID Coverage** | `(graph_api_users_found / expected_users_total) * 100` | < 95% | < 90% |
+| **Tasa de exito de sincronizacion** | `graph_api_sync_success_total / graph_api_sync_attempts_total` | < 99% | < 95% |
+| **Duracion de sincronizacion** | `graph_api_sync_duration_seconds` | > 10 min | > 20 min |
+| **Conteo de actualizaciones** | `graph_api_users_updated_total` en la ultima ejecucion | 0 (sin cambios) | N/A (cero es valido en la noche) |
+| **Desglose de errores** | `graph_api_errors_total` por etiqueta `error_code` | > 5 errores | > 20 errores |
+| **Estado de limitacion** | `graph_api_throttled_requests_total` | > 0 | > 10 en 5 min |
+| **Cobertura de Entra ID** | `(graph_api_users_found / expected_users_total) * 100` | < 95% | < 90% |
 
-**Dashboard URL:** `https://grafana.internal/d/users/entra-id-sync`
+**URL del dashboard:** `https://grafana.internal/d/users/entra-id-sync`
 
-### 3.3 Daily Sync Verification
+### 3.3 Verificacion diaria de sincronizacion
 
 ```bash
-# Step 1: Check the last sync timestamp and status via logs
+# Paso 1: Verificar la marca de tiempo de la ultima sincronizacion y el estado mediante logs
 kubectl logs -n idp-system -l app=users-service --tail=500 --since=24h \
   | grep -E "SyncCompleted|SyncFailed|GraphApiSync" \
   | tail -20
 
-# Expected output includes a log line like:
+# La salida esperada incluye una linea de log como:
 # {"@level":"Information","message":"Entra ID sync completed","sync_duration_seconds":342,"users_updated":15,"users_skipped":2841,"errors":0,"@timestamp":"..."}
 
-# Step 2: Verify the sync published its completion event
+# Paso 2: Verificar que la sincronizacion publico su evento de finalizacion
 kubectl logs -n idp-system -l app=users-service --tail=200 \
   | grep "users.sync.completed" \
   | tail -5
 
-# Step 3: Check the metric directly (if Prometheus port-forward is available)
+# Paso 3: Verificar la metrica directamente (si el port-forward de Prometheus esta disponible)
 curl -s http://localhost:7201/metrics | grep graph_api_sync_
 ```
 
-### 3.4 Investigating Sync Failures
+### 3.4 Investigacion de fallos de sincronizacion
 
-**Common failure modes:**
+**Modos de fallo comunes:**
 
-| Symptom | Likely Cause | Remediation |
+| Sintoma | Causa probable | Remedio |
 |---|---|---|
-| `429 Too Many Requests` | Graph API throttling | Check `graph_api_throttled_requests_total`. Sync backs off exponentially (Polly retry policy: 3 retries, 30s base delay). If throttling persists, request a quota increase via Azure support ticket. |
-| `401 Unauthorized` | Managed Identity or service principal expired | Verify the pod's managed identity: `az identity show --name users-service-identity --resource-group platform-prod-rg`. Check role assignment on Microsoft Graph. |
-| `404 Not Found` | User deleted from Entra ID but still in PostgreSQL | The sync logs this as a discrepancy. Review the discrepancy report (see Section 3.5) and decide whether to soft-delete the local record. |
-| Timeout > 30s | Network latency or Graph API degradation | Check `graph_api_sync_duration_seconds`. Consider reducing batch size or increasing the `GraphApi__SyncTimeoutSeconds` config (default: 120). |
+| `429 Too Many Requests` | Limitacion de Graph API | Verificar `graph_api_throttled_requests_total`. La sincronizacion retrocede exponencialmente (politica de reintentos de Polly: 3 reintentos, retraso base de 30s). Si la limitacion persiste, solicitar un aumento de cuota mediante ticket de soporte de Azure. |
+| `401 Unauthorized` | Identidad administrada o principal de servicio vencida | Verificar la identidad administrada del pod: `az identity show --name users-service-identity --resource-group platform-prod-rg`. Verificar la asignacion de roles en Microsoft Graph. |
+| `404 Not Found` | Usuario eliminado de Entra ID pero aun en PostgreSQL | La sincronizacion registra esto como una discrepancia. Revisar el informe de discrepancias (ver Seccion 3.5) y decidir si eliminar de forma suave el registro local. |
+| Timeout > 30s | Latencia de red o degradacion de Graph API | Verificar `graph_api_sync_duration_seconds`. Considerar reducir el tamano del lote o aumentar la configuracion `GraphApi__SyncTimeoutSeconds` (predeterminado: 120). |
 
-**Manual sync trigger:**
+**Activacion manual de sincronizacion:**
 
 ```bash
-# Trigger the sync endpoint (internal, not exposed via API Gateway)
-# Requires kubectl port-forward or direct pod access
+# Activar el endpoint de sincronizacion (interno, no expuesto a traves de API Gateway)
+# Requiere kubectl port-forward o acceso directo al pod
 kubectl exec -n idp-system deploy/users-service -- \
   curl -s -X POST http://localhost:7201/api/internal/sync-entra-id \
     -H "X-Internal-Key: $(cat /etc/secrets/internal-api-key)"
 
-# Monitor the sync in real-time
+# Monitorear la sincronizacion en tiempo real
 kubectl logs -n idp-system -l app=users-service --tail=100 -f \
   | grep -E "Sync|GraphApi|entra"
 ```
 
-### 3.5 Discrepancy Report
+### 3.5 Informe de discrepancias
 
-The sync generates a discrepancy report stored in a dedicated PostgreSQL table:
+La sincronizacion genera un informe de discrepancias almacenado en una tabla dedicada de PostgreSQL:
 
 ```sql
--- Query the latest sync discrepancy report
+-- Consultar el ultimo informe de discrepancias de sincronizacion
 SELECT
   sync_run_id,
   sync_timestamp,
-  db_only_count,       -- Users in PostgreSQL but not in Entra ID
-  entra_only_count,    -- Users in Entra ID but not in PostgreSQL
-  field_mismatch_count -- Users where fields differ
+  db_only_count,       -- Usuarios en PostgreSQL pero no en Entra ID
+  entra_only_count,    -- Usuarios en Entra ID pero no en PostgreSQL
+  field_mismatch_count -- Usuarios donde los campos difieren
 FROM sync_discrepancy_reports
 ORDER BY sync_timestamp DESC
 LIMIT 5;
 
--- View detailed field mismatches
+-- Ver discrepancias detalladas de campos
 SELECT
   u.id,
   u.email,
@@ -310,24 +310,24 @@ WHERE d.sync_run_id = '<latest-run-id>'
 ORDER BY u.email;
 ```
 
-**Action on discrepancies:**
+**Accion ante discrepancias:**
 
-- **Users in DB not in Entra ID:** These are likely non-employee service accounts or platform-internal users. Flag them with a `source = 'platform'` tag. If they represent former employees, initiate the offboarding workflow.
-- **Users in Entra ID not in DB:** These may be new employees synced from the HR system. Evaluate whether they need a user profile in the platform. If so, create the profile.
-- **Field mismatches:** The sync updates the DB fields automatically. Review the mismatch volume; a high count may indicate a bulk update in the HR system or a mapping error.
+- **Usuarios en BD no en Entra ID:** Estos son probablemente cuentas de servicio no empleados o usuarios internos de la plataforma. Marcarlos con una etiqueta `source = 'platform'`. Si representan ex empleados, iniciar el flujo de trabajo de desvinculacion.
+- **Usuarios en Entra ID no en BD:** Estos pueden ser nuevos empleados sincronizados desde el sistema de RRHH. Evaluar si necesitan un perfil de usuario en la plataforma. Si es asi, crear el perfil.
+- **Discrepancias de campos:** La sincronizacion actualiza los campos de BD automaticamente. Revisar el volumen de discrepancias; un numero alto puede indicar una actualizacion masiva en el sistema de RRHH o un error de mapeo.
 
-### 3.6 Sync Performance Tuning
+### 3.6 Ajuste de rendimiento de sincronizacion
 
 ```yaml
-# Configuration for Graph API sync (appsettings.Production.json)
+# Configuracion para sincronizacion de Graph API (appsettings.Production.json)
 GraphApi:
   Sync:
     Enabled: true
-    Schedule: "0 2 * * *"        # Nightly at 2 AM UTC
+    Schedule: "0 2 * * *"        # Nocturno a las 2 AM UTC
     TimeoutSeconds: 120
-    BatchSize: 50                 # Max users per batch request
-    Concurrency: 4                # Parallel Graph API calls
-    RetryCount: 3                 # Exponential backoff (Polly)
+    BatchSize: 50                 # Maximo de usuarios por solicitud de lote
+    Concurrency: 4                # Llamadas paralelas a Graph API
+    RetryCount: 3                 # Retroceso exponencial (Polly)
     RetryBaseDelaySeconds: 30
     FieldMappings:
       display_name: "displayName"
@@ -336,94 +336,95 @@ GraphApi:
       mobile_phone: "mobilePhone"
 ```
 
-**Tuning guidelines:**
+**Directrices de ajuste:**
 
-| Issue | Adjustment |
+| Problema | Ajuste |
 |---|---|
-| Sync duration exceeds 20 min for 50k users | Increase `Concurrency` to 8 (monitor throttling) |
-| Graph API 429 errors | Decrease `Concurrency` to 2 and increase `RetryBaseDelaySeconds` to 60 |
-| Sync never finishes before next scheduled start | Ensure `TimeoutSeconds` > expected duration; consider running twice daily instead |
-| Too many unnecessary updates (0 field changes) | The sync skips updates when all fields match — check `graph_api_users_updated_total` metric. If 0 consistently, the sync is healthy. |
+| La duracion de sincronizacion supera los 20 min para 50k usuarios | Aumentar `Concurrency` a 8 (monitorear limitacion) |
+| Errores 429 de Graph API | Disminuir `Concurrency` a 2 y aumentar `RetryBaseDelaySeconds` a 60 |
+| La sincronizacion nunca termina antes del proximo inicio programado | Asegurar que `TimeoutSeconds` > duracion esperada; considerar ejecutar dos veces al dia en su lugar |
+| Demasiadas actualizaciones innecesarias (0 cambios de campo) | La sincronizacion salta actualizaciones cuando todos los campos coinciden — verificar metrica `graph_api_users_updated_total`. Si es 0 consistentemente, la sincronizacion esta saludable. |
 
 ---
 
-## 4. Soft-Delete Purging
+## 4. Purga de eliminacion suave
 
-### 4.1 Overview
+### 4.1 Descripcion general
 
-The Users Service implements a **soft-delete** pattern: when a user is deleted, their record is marked with `deleted_at = NOW()` and `is_active = false`. The data is retained for a configurable period (`SoftDeleteRetentionDays`, default: 30 days) before being permanently purged.
+El Users Service implementa un patron de **eliminacion suave**: cuando un usuario es eliminado, su registro se marca con `deleted_at = NOW()` y `is_active = false`. Los datos se retienen durante un periodo configurable (`SoftDeleteRetentionDays`, predeterminado: 30 dias) antes de ser purgados permanentemente.
 
-This design ensures:
+Este diseno asegura:
 
-- Referential integrity is preserved (FKEYs referencing `users.id` remain valid).
-- An undelete window is available for accidental deletions.
-- A scheduled purge job handles permanent removal and PII anonymization.
+- La integridad referencial se preserva (las FKEYs que referencian `users.id` permanecen validas).
+- Una ventana de recuperacion esta disponible para eliminaciones accidentales.
+- Un trabajo de purga programado maneja la eliminacion permanente y la anonimizacion de PII.
 
-**Data lifecycle:**
+**Ciclo de vida de los datos:**
 
 ```
-User created ──► Soft-deleted ──► Retention window (30 days) ──► Purged
+Usuario creado ──► Eliminado suave ──► Ventana de retencion (30 dias) ──► Purgado
                      │                       │
-                     │ Can be restored        │ Permanent removal
-                     │ (undelete)             │ + audit trail update
+                     │ Puede restaurarse      │ Eliminacion permanente
+                     │ (recuperar)            │ + actualizacion de pista de auditoria
                      ▼                       ▼
-              deleted_at = NOW()        Record deleted from DB
-              is_active = false         PII anonymized in audit logs
-              All queries exclude       (email → hash, display_name → "Deleted User")
-              by default filter
+              deleted_at = NOW()        Registro eliminado de BD
+              is_active = false         PII anonimizada en logs de auditoria
+              Todas las consultas       (email → hash, display_name → "Deleted User")
+              excluyen por defecto
+              filtro
 ```
 
-### 4.2 Purge Job Configuration
+### 4.2 Configuracion del trabajo de purga
 
 ```yaml
 # appsettings.Production.json
 Users:
-  SoftDeleteRetentionDays: 30       # Environment-specific (dev: 7, qa: 14, staging: 30, prod: 30)
+  SoftDeleteRetentionDays: 30       # Especifico del entorno (dev: 7, qa: 14, staging: 30, prod: 30)
 PurgeJob:
-  Schedule: "0 3 * * *"            # Daily at 3 AM UTC
-  BatchSize: 500                   # Users purged per batch
-  BatchDelayMs: 100                # Pause between batches to reduce DB load
-  TimeoutMinutes: 30               # Maximum job runtime
-  DryRunEnabled: true              # Safety flag — see Section 4.4
-  AuditRetentionDays: 90           # How long to keep purged-user audit records
+  Schedule: "0 3 * * *"            # Diario a las 3 AM UTC
+  BatchSize: 500                   # Usuarios purgados por lote
+  BatchDelayMs: 100                # Pausa entre lotes para reducir carga de BD
+  TimeoutMinutes: 30               # Tiempo de ejecucion maximo del trabajo
+  DryRunEnabled: true              # Indicador de seguridad — ver Seccion 4.4
+  AuditRetentionDays: 90           # Cuanto tiempo conservar registros de auditoria de usuarios purgados
 ```
 
-### 4.3 Monitoring Purge Job Health
+### 4.3 Monitoreo de la salud del trabajo de purga
 
-**Key metrics (Grafana panel: `Users / Purge Job`):**
+**Metricas clave (panel de Grafana: `Users / Purge Job`):**
 
-| Metric | Description | Warning | Critical |
+| Metrica | Descripcion | Advertencia | Critico |
 |---|---|---|---|
-| `purge_job_success` | 1 if last run succeeded, 0 if failed | 0 (failure) | — |
-| `purge_job_duration_seconds` | Time to complete | > 10 min | > 20 min |
-| `purge_job_users_purged_total` | Users removed in last run | — | — |
-| `purge_job_errors_total` | Errors encountered | > 0 | > 5 |
-| `purge_job_dry_run` | 1 if dry-run mode is on, 0 if live | — | — |
+| `purge_job_success` | 1 si la ultima ejecucion tuvo exito, 0 si fallo | 0 (fallo) | — |
+| `purge_job_duration_seconds` | Tiempo para completar | > 10 min | > 20 min |
+| `purge_job_users_purged_total` | Usuarios eliminados en la ultima ejecucion | — | — |
+| `purge_job_errors_total` | Errores encontrados | > 0 | > 5 |
+| `purge_job_dry_run` | 1 si el modo de simulacion esta activado, 0 si es en vivo | — | — |
 
-**Verify the purge job ran successfully:**
+**Verificar que el trabajo de purga se ejecuto exitosamente:**
 
 ```bash
-# Check the most recent purge job log
+# Verificar el log del trabajo de purga mas reciente
 kubectl logs -n idp-system -l app=users-service --tail=500 --since=36h \
   | grep "PurgeJob" \
   | tail -20
 
-# Expected output includes:
+# La salida esperada incluye:
 # {"@level":"Information","message":"Purge job completed","users_purged":42,"batches":3,"errors":0,"duration_seconds":14.2,"dryRun":false,"@timestamp":"..."}
-# OR (if dry-run mode):
+# O (si el modo de simulacion esta activado):
 # {"@level":"Information","message":"Purge job completed (DRY RUN)","candidates":42,"dryRun":true,"duration_seconds":12.1}
 ```
 
-**Direct database query:**
+**Consulta directa a base de datos:**
 
 ```sql
--- Check how many users are pending purge
+-- Verificar cuantos usuarios estan pendientes de purga
 SELECT COUNT(*) AS pending_purge_count
 FROM users
 WHERE deleted_at IS NOT NULL
   AND deleted_at < NOW() - INTERVAL '30 days';
 
--- Check purge job history
+-- Verificar el historial del trabajo de purga
 SELECT
   run_timestamp,
   users_purged,
@@ -435,134 +436,134 @@ ORDER BY run_timestamp DESC
 LIMIT 10;
 ```
 
-### 4.4 Dry-Run Mode and Canary Deployment
+### 4.4 Modo de simulacion y despliegue canary
 
-The purge job runs in **dry-run mode** by default (`DryRunEnabled: true`). In dry-run mode, the job identifies candidates for purging but does not delete any records. To enable live purging, the operator must:
+El trabajo de purga se ejecuta en **modo de simulacion** de forma predeterminada (`DryRunEnabled: true`). En modo de simulacion, el trabajo identifica candidatos para purgar pero no elimina ningun registro. Para habilitar la purga en vivo, el operador debe:
 
-1. Verify the candidates are correct by reviewing the dry-run log.
-2. Set `PurgeJob__DryRunEnabled` to `false` via a Kubernetes ConfigMap or environment variable.
-3. Monitor the first live run closely.
-4. Re-enable dry-run mode after confirmation.
+1. Verificar que los candidatos son correctos revisando el log de simulacion.
+2. Establecer `PurgeJob__DryRunEnabled` a `false` mediante un ConfigMap de Kubernetes o variable de entorno.
+3. Monitorear de cerca la primera ejecucion en vivo.
+4. Reactivar el modo de simulacion despues de la confirmacion.
 
 ```bash
-# Step 1: Check dry-run candidates
+# Paso 1: Verificar candidatos de simulacion
 kubectl logs -n idp-system -l app=users-service --tail=200 --since=36h \
   | grep "PurgeJob" | grep "dryRun" | grep "candidates"
 
-# Step 2: Review sample candidates via database
+# Paso 2: Revisar candidatos de muestra mediante base de datos
 SELECT id, email, deleted_at
 FROM users
 WHERE deleted_at IS NOT NULL
   AND deleted_at < NOW() - INTERVAL '30 days'
 LIMIT 10;
 
-# Step 3: Disable dry-run (temporary — will be reverted after next restart)
+# Paso 3: Deshabilitar modo de simulacion (temporal — se revertira despues del proximo reinicio)
 kubectl set env deployment users-service -n idp-system \
   PurgeJob__DryRunEnabled=false
 
-# Step 4: Verify the live run via logs (next scheduled run, or trigger manually)
-# Step 5: Re-enable dry-run
+# Paso 4: Verificar la ejecucion en vivo mediante logs (proxima ejecucion programada, o activar manualmente)
+# Paso 5: Reactivar modo de simulacion
 kubectl set env deployment users-service -n idp-system \
   PurgeJob__DryRunEnabled=true
 ```
 
-**Manual trigger (for testing):**
+**Activacion manual (para pruebas):**
 
 ```bash
-# Trigger purge job via internal endpoint
+# Activar trabajo de purga mediante endpoint interno
 kubectl exec -n idp-system deploy/users-service -- \
   curl -s -X POST http://localhost:7201/api/internal/purge-users \
     -H "X-Internal-Key: $(cat /etc/secrets/internal-api-key)"
 
-# For dry-run:
+# Para simulacion:
 kubectl exec -n idp-system deploy/users-service -- \
   curl -s -X POST "http://localhost:7201/api/internal/purge-users?dryRun=true" \
     -H "X-Internal-Key: $(cat /etc/secrets/internal-api-key)"
 ```
 
-### 4.5 PII Anonymization
+### 4.5 Anonimizacion de PII
 
-When a user is purged, the following transformations occur:
+Cuando un usuario es purgado, ocurren las siguientes transformaciones:
 
-| Field | Before Purge | After Purge |
+| Campo | Antes de la purga | Despues de la purga |
 |---|---|---|
 | `email` | `john.doe@company.com` | `sha256(user_id + salt)@purged.internal` |
 | `display_name` | `John Doe` | `Deleted User` |
 | `username` | `jdoe` | `deleted-{user_id_prefix}` |
 | `mobile_phone` | `+1 555-0123` | `NULL` |
 | `external_ids` (Entra ID OID) | `aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee` | `NULL` |
-| Audit log user references | `user_id` (UUID) | `user_id` preserved (key needed to link events) |
+| Referencias de usuario en log de auditoria | `user_id` (UUID) | `user_id` preservado (clave necesaria para vincular eventos) |
 
-**Verification of anonymization:**
+**Verificacion de anonimizacion:**
 
 ```sql
--- After a purge run, confirm PII is removed
+-- Despues de una ejecucion de purga, confirmar que la PII se elimino
 SELECT email, display_name, mobile_phone, external_ids
 FROM audit_users_purged
 WHERE purge_run_id = '<latest-run-id>'
 LIMIT 5;
--- email should contain '@purged.internal'
--- display_name should be 'Deleted User'
--- mobile_phone should be NULL
+-- email debe contener '@purged.internal'
+-- display_name debe ser 'Deleted User'
+-- mobile_phone debe ser NULL
 ```
 
-### 4.6 Restoring a Soft-Deleted User (Undelete)
+### 4.6 Restauracion de un usuario eliminado suave (recuperacion)
 
-If a user was accidentally deleted and the retention window has not expired, an admin can restore them:
+Si un usuario fue eliminado accidentalmente y la ventana de retencion no ha expirado, un administrador puede restaurarlo:
 
 ```bash
-# REST API operation (requires admin role)
+# Operacion de API REST (requiere rol de administrador)
 curl -X POST https://api.internal.platform/api/users/{user-id}/restore \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json"
 ```
 
-The restore operation:
+La operacion de restauracion:
 
-1. Sets `deleted_at = NULL` and `is_active = true`.
-2. Publishes a `users.restored` event.
-3. Logs the restore action in the audit trail.
-4. Does NOT re-enrich from Entra ID (manual sync required).
+1. Establece `deleted_at = NULL` e `is_active = true`.
+2. Publica un evento `users.restored`.
+3. Registra la accion de restauracion en la pista de auditoria.
+4. NO re-enriquece desde Entra ID (se requiere sincronizacion manual).
 
-**After the retention window expires, restoration is impossible.** The data has been permanently purged and PII anonymized.
+**Despues de que expire la ventana de retencion, la restauracion es imposible.** Los datos han sido purgados permanentemente y la PII anonimizada.
 
 ---
 
-## 5. Capacity Planning
+## 5. Planificacion de capacidad
 
-### 5.1 Current Capacity Baseline
+### 5.1 Linea base de capacidad actual
 
-| Resource | Current Allocation | Peak Utilization | Headroom |
+| Recurso | Asignacion actual | Utilizacion maxima | Margen |
 |---|---|---|---|
-| **AKS Node Pool** | 9 nodes (Standard_D4s_v5) | 60% CPU / 50% memory | 40-50% |
-| **Users Service Pods** | 9 (3 per AZ × 3 zones) | 35% CPU / 45% memory | 55-65% |
-| **PostgreSQL (Primary)** | 4 vCores, 16 GB RAM, 256 GB storage | 25% CPU / 40% connections / 60 GB used | 60-75% |
-| **PostgreSQL (Read Replica — NE)** | 2 vCores, 8 GB RAM | 10% CPU / 15% connections | 85%+ |
-| **Service Bus (auth-events topic)** | Premium 1 MU | 150 msg/s peak | 65% |
-| **Service Bus (users-events topic)** | Premium 1 MU | 30 msg/s peak | 85% |
-| **Graph API Requests** | 500,000 / 30-day rolling | 120,000 used (~24%) | 76% |
+| **Pool de nodos AKS** | 9 nodos (Standard_D4s_v5) | 60% CPU / 50% memoria | 40-50% |
+| **Pods de Users Service** | 9 (3 por AZ x 3 zonas) | 35% CPU / 45% memoria | 55-65% |
+| **PostgreSQL (Primario)** | 4 vCores, 16 GB RAM, 256 GB almacenamiento | 25% CPU / 40% conexiones / 60 GB usados | 60-75% |
+| **PostgreSQL (Replica de lectura — NE)** | 2 vCores, 8 GB RAM | 10% CPU / 15% conexiones | 85%+ |
+| **Service Bus (topico auth-events)** | Premium 1 MU | 150 msg/s pico | 65% |
+| **Service Bus (topico users-events)** | Premium 1 MU | 30 msg/s pico | 85% |
+| **Solicitudes de Graph API** | 500,000 / ventana movil de 30 dias | 120,000 usados (~24%) | 76% |
 
-### 5.2 Scaling Triggers and Actions
+### 5.2 Disparadores y acciones de escalado
 
-| Metric | Threshold | Action | Lead Time |
+| Metrica | Umbral | Accion | Tiempo de respuesta |
 |---|---|---|---|
-| Pod CPU > 70% for 5 min | HPA triggers scale-up (max 6 per AZ) | Automatic | 2 min |
-| Pod request latency p95 > 800ms | HPA triggers scale-up | Automatic | 2 min |
-| Memory > 80% for 5 min | HPA triggers scale-up | Automatic | 2 min |
-| AKS node CPU > 75% | Cluster Autoscaler adds node (max 10 per AZ) | Automatic | 5 min |
-| PostgreSQL connections > 80% | Increase `max_connections` and monitor vCores | Manual (planned) | 30 min |
-| PostgreSQL storage > 75% | Request storage increase; plan index maintenance | Manual | 4 hours (Azure ticket for storage increase) |
-| Graph API quota > 80% | Request quota increase via Azure support | Manual (ticket) | 2-3 days |
+| CPU del pod > 70% durante 5 min | HPA activa escalado (max 6 por AZ) | Automatico | 2 min |
+| Latencia p95 de solicitud del pod > 800ms | HPA activa escalado | Automatico | 2 min |
+| Memoria > 80% durante 5 min | HPA activa escalado | Automatico | 2 min |
+| CPU del nodo AKS > 75% | Cluster Autoscaler agrega nodo (max 10 por AZ) | Automatico | 5 min |
+| Conexiones PostgreSQL > 80% | Aumentar `max_connections` y monitorear vCores | Manual (planificado) | 30 min |
+| Almacenamiento PostgreSQL > 75% | Solicitar aumento de almacenamiento; planificar mantenimiento de indices | Manual | 4 horas (ticket de Azure para aumento de almacenamiento) |
+| Cuota de Graph API > 80% | Solicitar aumento de cuota mediante soporte de Azure | Manual (ticket) | 2-3 dias |
 
-### 5.3 Scaling Procedures
+### 5.3 Procedimientos de escalado
 
-**Horizontal Pod Autoscaler (HPA):**
+**Autoscaler Horizontal de Pods (HPA):**
 
 ```bash
-# View current HPA configuration
+# Ver la configuracion actual de HPA
 kubectl get hpa users-service -n idp-system -o yaml
 
-# Expected configuration:
+# Configuracion esperada:
 #   minReplicas: 3
 #   maxReplicas: 6
 #   metrics:
@@ -580,38 +581,38 @@ kubectl get hpa users-service -n idp-system -o yaml
 #           averageUtilization: 80
 ```
 
-**Manual scale-up (preemptive for planned traffic increases, e.g., onboarding event):**
+**Escalado manual (preventivo para aumentos de trafico planificados, ej., evento de incorporacion):**
 
 ```bash
-# Increase minimum replicas ahead of a load event
+# Aumentar las replicas minimas antes de un evento de carga
 kubectl scale deployment users-service -n idp-system --replicas=5
 
-# After the event, revert
+# Despues del evento, revertir
 kubectl scale deployment users-service -n idp-system --replicas=3
 ```
 
-**PostgreSQL vertical scaling:**
+**Escalado vertical de PostgreSQL:**
 
 ```bash
-# Step 1: Check current tier and storage
+# Paso 1: Verificar el nivel actual y el almacenamiento
 az postgres flexible-server show \
   --name pg-users-prod \
   --resource-group platform-prod-rg \
   --query "{sku:sku.name, storage:storage.storageSizeGB, storageUsed:storage.storageUsedGB}"
 
-# Step 2: Scale compute (brief failover — plan during maintenance window)
+# Paso 2: Escalar computo (breve conmutacion por error — planificar durante ventana de mantenimiento)
 az postgres flexible-server update \
   --name pg-users-prod \
   --resource-group platform-prod-rg \
   --sku-name Standard_D4ds_v5
 
-# Step 3: Scale storage (no downtime, but irreversible)
+# Paso 3: Escalar almacenamiento (sin tiempo de inactividad, pero irreversible)
 az postgres flexible-server update \
   --name pg-users-prod \
   --resource-group platform-prod-rg \
   --storage-size 512
 
-# Step 4: Update server parameters
+# Paso 4: Actualizar parametros del servidor
 az postgres flexible-server parameter set \
   --name max_connections \
   --value 200 \
@@ -619,83 +620,83 @@ az postgres flexible-server parameter set \
   --resource-group platform-prod-rg
 ```
 
-### 5.4 Capacity Review Cadence
+### 5.4 Cadencia de revision de capacidad
 
-| Review Type | Frequency | Participants | Deliverable |
+| Tipo de revision | Frecuencia | Participantes | Entregable |
 |---|---|---|---|
-| Dashboard review | Daily | On-call | Metric trend check (Grafana snapshot) |
-| Trend analysis | Weekly | Platform engineer | 7-day resource usage chart |
-| Capacity planning | Monthly | SRE + Platform team | Scaling recommendations |
-| Budget forecasting | Quarterly | Platform team + FinOps | Cost projection and optimization |
+| Revision de dashboard | Diaria | Guardia | Verificacion de tendencia de metricas (captura de Grafana) |
+| Analisis de tendencias | Semanal | Ingeniero de plataforma | Grafico de uso de recursos de 7 dias |
+| Planificacion de capacidad | Mensual | SRE + equipo de plataforma | Recomendaciones de escalado |
+| Prevision presupuestaria | Trimestral | Equipo de plataforma + FinOps | Proyeccion de costos y optimizacion |
 
-### 5.5 Autoscaling Test Procedure
+### 5.5 Procedimiento de prueba de autoscalado
 
-Execute this quarterly to validate that HPA and Cluster Autoscaler respond correctly:
+Ejecutar esto trimestralmente para validar que HPA y Cluster Autoscaler respondan correctamente:
 
 ```bash
-# Step 1: Deploy a load-test job in the staging environment
+# Paso 1: Desplegar un trabajo de prueba de carga en el entorno staging
 kubectl apply -f k8s/staging/load-test/users-service-loadtest.yaml
 
-# Step 2: Monitor pod scaling
+# Paso 2: Monitorear el escalado de pods
 watch -n 10 'kubectl get pods -n idp-system -l app=users-service'
 
-# Step 3: Verify HPA metrics
+# Paso 3: Verificar metricas de HPA
 kubectl get hpa users-service -n idp-system -w
 
-# Step 4: Verify Cluster Autoscaler adds nodes
+# Paso 4: Verificar que Cluster Autoscaler agregue nodos
 kubectl get nodes -w
 
-# Step 5: After test completes, confirm scale-down back to minimum
+# Paso 5: Despues de que la prueba se complete, confirmar la reduccion de escala al minimo
 kubectl get pods -n idp-system -l app=users-service
 
-# Step 6: Remove the load test
+# Paso 6: Eliminar la prueba de carga
 kubectl delete -f k8s/staging/load-test/users-service-loadtest.yaml
 ```
 
 ---
 
-## 6. Performance Tuning
+## 6. Ajuste de rendimiento
 
-### 6.1 Key Performance Baselines
+### 6.1 Lineas base de rendimiento clave
 
-| Metric | Target | Warning | Critical | Measurement Source |
+| Metrica | Objetivo | Advertencia | Critico | Fuente de medicion |
 |---|---|---|---|---|
-| P95 GET /api/users/{id} latency | < 200 ms | 400 ms | 800 ms | Grafana (http_request_duration_seconds) |
-| P95 POST /api/users latency | < 300 ms | 500 ms | 1,000 ms | Grafana (http_request_duration_seconds) |
-| P95 list users (paginated) | < 500 ms | 800 ms | 1,500 ms | Grafana (http_request_duration_seconds) |
-| JWT validation latency | < 5 ms | 10 ms | 50 ms | Grafana (jwt_validation_duration_seconds) |
-| PostgreSQL query time (write) | < 30 ms | 60 ms | 150 ms | `pg_stat_statements` |
-| PostgreSQL query time (read) | < 10 ms | 25 ms | 75 ms | `pg_stat_statements` |
-| Graph API call latency | < 500 ms | 1,000 ms | 2,000 ms | Grafana (graph_api_duration_seconds) |
-| Service Bus message processing | < 100 ms | 250 ms | 500 ms | Grafana (event_processing_duration_seconds) |
-| P95 purge job batch | < 5 s | 15 s | 30 s | Grafana (purge_job_duration_seconds) |
+| Latencia P95 GET /api/users/{id} | < 200 ms | 400 ms | 800 ms | Grafana (http_request_duration_seconds) |
+| Latencia P95 POST /api/users | < 300 ms | 500 ms | 1,000 ms | Grafana (http_request_duration_seconds) |
+| P95 listar usuarios (paginado) | < 500 ms | 800 ms | 1,500 ms | Grafana (http_request_duration_seconds) |
+| Latencia de validacion JWT | < 5 ms | 10 ms | 50 ms | Grafana (jwt_validation_duration_seconds) |
+| Tiempo de consulta PostgreSQL (escritura) | < 30 ms | 60 ms | 150 ms | `pg_stat_statements` |
+| Tiempo de consulta PostgreSQL (lectura) | < 10 ms | 25 ms | 75 ms | `pg_stat_statements` |
+| Latencia de llamada a Graph API | < 500 ms | 1,000 ms | 2,000 ms | Grafana (graph_api_duration_seconds) |
+| Procesamiento de mensajes de Service Bus | < 100 ms | 250 ms | 500 ms | Grafana (event_processing_duration_seconds) |
+| Lote de trabajo de purga P95 | < 5 s | 15 s | 30 s | Grafana (purge_job_duration_seconds) |
 
-### 6.2 PostgreSQL Tuning
+### 6.2 Ajuste de PostgreSQL
 
-**Current configuration:**
+**Configuracion actual:**
 
 ```ini
-# Applied via Azure Flexible Server parameter group "users-service-prod"
+# Aplicada mediante el grupo de parametros de Azure Flexible Server "users-service-prod"
 
-max_connections = 150                    # 50 per pod × 3 pods
-shared_buffers = '4GB'                   # 25% of 16 GB RAM
-effective_cache_size = '12GB'            # 75% of 16 GB RAM
-work_mem = '8MB'                         # Reduced from default (simple lookups, not OLAP)
+max_connections = 150                    # 50 por pod x 3 pods
+shared_buffers = '4GB'                   # 25% de 16 GB RAM
+effective_cache_size = '12GB'            # 75% de 16 GB RAM
+work_mem = '8MB'                         # Reducido del valor predeterminado (busquedas simples, no OLAP)
 maintenance_work_mem = '1GB'
 random_page_cost = 1.1                   # Azure Premium SSD
 effective_io_concurrency = 200
 wal_buffers = '32MB'
 
-# Users Service specific
-jit = on                                 # Beneficial for complex reporting queries
-enable_nestloop = on                     # Acceptable for typical user lookups
-parallel_query_workers = 2               # Limit to avoid I/O contention on the primary
+# Especifico de Users Service
+jit = on                                 # Beneficioso para consultas de informes complejas
+enable_nestloop = on                     # Aceptable para busquedas tipicas de usuarios
+parallel_query_workers = 2               # Limitar para evitar contención de E/S en el primario
 ```
 
-**Critical indexes to verify:**
+**Indices criticos a verificar:**
 
 ```sql
--- Verify that the essential indexes exist and are being used
+-- Verificar que los indices esenciales existen y se estan usando
 SELECT
   schemaname,
   tablename,
@@ -707,17 +708,17 @@ FROM pg_stat_user_indexes
 WHERE tablename IN ('users', 'user_sessions', 'audit_log')
 ORDER BY idx_scan ASC;
 
--- Expected indexes on `users`:
---   ix_users_tenant_id_deleted_at (composite, partial: WHERE deleted_at IS NULL)
---   ix_users_email (unique)
---   ix_users_tenant_id_username (unique composite)
---   ix_users_deleted_at (for purge job queries)
+-- Indices esperados en `users`:
+--   ix_users_tenant_id_deleted_at (compuesto, parcial: WHERE deleted_at IS NULL)
+--   ix_users_email (unico)
+--   ix_users_tenant_id_username (unico compuesto)
+--   ix_users_deleted_at (para consultas del trabajo de purga)
 ```
 
-**Missing index detection (run weekly):**
+**Deteccion de indices faltantes (ejecutar semanalmente):**
 
 ```sql
--- Tables with high sequential scans = potential missing index
+-- Tablas con altos escaneos secuenciales = posible indice faltante
 SELECT
   relname,
   seq_scan,
@@ -728,16 +729,16 @@ SELECT
     ELSE 0
   END AS avg_tuples_per_seq
 FROM pg_stat_user_tables
-WHERE seq_scan > 100                      <!-- Ignore tables with very few scans -->
-  AND seq_tup_read > 10000                <!-- Many rows read per scan -->
+WHERE seq_scan > 100                      <!-- Ignorar tablas con muy pocos escaneos -->
+  AND seq_tup_read > 10000                <!-- Muchas filas leidas por escaneo -->
 ORDER BY avg_tuples_per_seq DESC
 LIMIT 10;
 ```
 
-**Table maintenance:**
+**Mantenimiento de tablas:**
 
 ```sql
--- Check table bloat (run monthly)
+-- Verificar hinchazon de tablas (ejecutar mensualmente)
 SELECT
   schemaname,
   tablename,
@@ -750,31 +751,31 @@ FROM pg_stat_user_tables
 ORDER BY dead_pct DESC
 LIMIT 10;
 
--- If any table has > 20% dead tuples and no recent autovacuum:
--- Manually vacuum the table
+-- Si alguna tabla tiene > 20% de tuplas muertas y sin autovacuum reciente:
+-- Vaciar manualmente la tabla
 VACUUM (VERBOSE, ANALYZE) users;
 ```
 
-### 6.3 Connection Pooling
+### 6.3 Pool de conexiones
 
-The service uses Npgsql connection pooling with the following configuration:
+El servicio utiliza el pool de conexiones de Npgsql con la siguiente configuracion:
 
 ```ini
-# Connection string parameters
+# Parametros de cadena de conexion
 Host=pg-users-prod.postgres.database.azure.com;Database=usersdb;
-Maximum Pool Size=50;                    # Per pod (3 pods × 50 = 150 max)
-Connection Idle Lifetime=300;            # 5 min idle before pool eviction
-Connection Pruning Interval=60;          # Check every 60s for idle connections
-Multiplexing=false;                      # Disabled — read/write mix reduces multiplexing benefit
+Maximum Pool Size=50;                    # Por pod (3 pods x 50 = 150 max)
+Connection Idle Lifetime=300;            # 5 min inactivo antes de expulsion del pool
+Connection Pruning Interval=60;          # Verificar cada 60s conexiones inactivas
+Multiplexing=false;                      # Deshabilitado — mezcla lectura/escritura reduce beneficio de multiplexacion
 ```
 
-**Pool monitoring:**
+**Monitoreo del pool:**
 
 ```bash
-# Grafana metric: npgsql_connection_pool_total_connection_count
-# Target: active connections < 75% of pool size (37 of 50)
+# Metrica de Grafana: npgsql_connection_pool_total_connection_count
+# Objetivo: conexiones activas < 75% del tamano del pool (37 de 50)
 
-# Direct PostgreSQL check:
+# Verificacion directa de PostgreSQL:
 SELECT COUNT(*) AS active_connections
 FROM pg_stat_activity
 WHERE state = 'active'
@@ -786,50 +787,50 @@ WHERE state = 'idle'
   AND datname = 'usersdb';
 ```
 
-### 6.4 Event Processing Tuning
+### 6.4 Ajuste de procesamiento de eventos
 
-The event consumer processes auth events (login, logout, token revoked) from Azure Service Bus:
+El consumidor de eventos procesa eventos de autenticacion (inicio de sesion, cierre de sesion, token revocado) de Azure Service Bus:
 
 ```yaml
 # appsettings.Production.json
 ServiceBus:
   EventProcessor:
-    MaxConcurrentCalls: 10            # Max messages processed simultaneously per pod
-    PrefetchCount: 20                 # Messages pre-fetched for performance
-    AutoComplete: true                # Auto-complete on successful processing
-    MaxAutoLockRenewalDuration: "00:05:00"  # 5 min lock renewal
-    RetryCount: 3                     # On transient failure
-    DeadLetterOnError: true           # Poison messages go to DLQ
+    MaxConcurrentCalls: 10            # Maximo de mensajes procesados simultaneamente por pod
+    PrefetchCount: 20                 # Mensajes pre-obtenidos para rendimiento
+    AutoComplete: true                # Auto-completar en procesamiento exitoso
+    MaxAutoLockRenewalDuration: "00:05:00"  # 5 min de renovacion de bloqueo
+    RetryCount: 3                     # En fallo transitorio
+    DeadLetterOnError: true           # Mensajes envenenados van a DLQ
 ```
 
-**Performance tuning guidelines:**
+**Directrices de ajuste de rendimiento:**
 
-| Symptom | Likely Cause | Action |
+| Sintoma | Causa probable | Accion |
 |---|---|---|
-| High message backlog with low CPU | `MaxConcurrentCalls` too low | Increase to 20-30; monitor DB connection pool |
-| High DB connection count with message backlog | DB queries are slow (query tuning needed) | Check `pg_stat_statements` for slow event processing queries |
-| Messages being dead-lettered | Deserialization failure or processing error | Inspect DLQ, check Kibana logs for `EventProcessor` errors |
-| Processing latency > 500ms | Service Bus throttling at 1 MU | Check namespace metrics; consider scaling to 2 MUs |
+| Alto backlog de mensajes con CPU baja | `MaxConcurrentCalls` demasiado bajo | Aumentar a 20-30; monitorear pool de conexiones de BD |
+| Alto conteo de conexiones de BD con backlog de mensajes | Consultas de BD lentas (se necesita ajuste de consultas) | Verificar `pg_stat_statements` para consultas lentas de procesamiento de eventos |
+| Mensajes siendo enviados a cola de mensajes fallidos | Fallo de deserializacion o error de procesamiento | Inspeccionar DLQ, verificar logs de Kibana para errores de `EventProcessor` |
+| Latencia de procesamiento > 500ms | Limitacion de Service Bus en 1 MU | Verificar metricas del namespace; considerar escalar a 2 MUs |
 
-### 6.5 JIT Compilation and Startup Warmup
+### 6.5 Compilacion JIT y calentamiento de inicio
 
-The service supports a startup warmup endpoint to reduce cold-start latency after deployment:
+El servicio admite un endpoint de calentamiento de inicio para reducir la latencia de inicio en frio despues del despliegue:
 
 ```bash
-# Trigger warmup (called by the startup probe)
-# Internal-only endpoint, not exposed via API Gateway
+# Activar calentamiento (llamado por la sonda de inicio)
+# Endpoint solo interno, no expuesto a traves de API Gateway
 curl -X POST http://localhost:7201/api/internal/warmup \
   -H "X-Internal-Key: ..."
 
-# Expected effect: first-request latency drops from ~800ms to <100ms
+# Efecto esperado: la latencia de la primera solicitud disminuye de ~800ms a <100ms
 ```
 
-### 6.6 Query Optimization Patterns
+### 6.6 Patrones de optimizacion de consultas
 
-**List users query (the most common read path):**
+**Consulta de listar usuarios (la ruta de lectura mas comun):**
 
 ```sql
--- The service generates a query equivalent to:
+-- El servicio genera una consulta equivalente a:
 SELECT id, tenant_id, email, display_name, roles, created_at, updated_at
 FROM users
 WHERE tenant_id = @tenantId
@@ -837,11 +838,11 @@ WHERE tenant_id = @tenantId
 ORDER BY created_at DESC
 OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
 
--- This should use the composite index ix_users_tenant_id_deleted_at
--- covering (tenant_id, deleted_at DESC, created_at DESC) INCLUDE (email, display_name, roles)
+-- Esto debe usar el indice compuesto ix_users_tenant_id_deleted_at
+-- cubriendo (tenant_id, deleted_at DESC, created_at DESC) INCLUDE (email, display_name, roles)
 ```
 
-**Purge candidates query:**
+**Consulta de candidatos a purga:**
 
 ```sql
 SELECT id, email, display_name
@@ -851,54 +852,54 @@ WHERE deleted_at IS NOT NULL
 ORDER BY deleted_at ASC
 LIMIT @batchSize;
 
--- Uses ix_users_deleted_at (partial index on deleted_at IS NOT NULL)
+-- Usa ix_users_deleted_at (indice parcial en deleted_at IS NOT NULL)
 ```
 
 ---
 
-## 7. Backup Verification
+## 7. Verificacion de copias de seguridad
 
-### 7.1 PostgreSQL Backups
+### 7.1 Copias de seguridad de PostgreSQL
 
-**Configuration:**
+**Configuracion:**
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Backup type** | Azure-managed, geo-redundant |
-| **Retention** | 35 days point-in-time recovery (PITR) |
-| **Backup window** | 01:30 - 03:30 UTC |
-| **Geo-redundancy** | Enabled (backups replicated to North Europe paired region) |
+| **Tipo de copia de seguridad** | Administrada por Azure, con redundancia geografica |
+| **Retencion** | 35 dias de recuperacion a un punto en el tiempo (PITR) |
+| **Ventana de copia de seguridad** | 01:30 - 03:30 UTC |
+| **Redundancia geografica** | Habilitada (copias replicadas a la region emparejada de North Europe) |
 
-**Daily verification procedure:**
+**Procedimiento de verificacion diaria:**
 
 ```bash
-# Step 1: List recent backups
+# Paso 1: Listar copias de seguridad recientes
 az postgres flexible-server backup list \
   --name pg-users-prod \
   --resource-group platform-prod-rg \
   --query "[].{name:name, created:createdTime, size:backupSize}" \
   --output table
 
-# Expected: at least one completed backup within the last 24 hours
+# Esperado: al menos una copia de seguridad completada en las ultimas 24 horas
 
-# Step 2: Verify the earliest point-in-time restore date
+# Paso 2: Verificar la fecha de restauracion de punto en el tiempo mas temprana
 az postgres flexible-server show \
   --name pg-users-prod \
   --resource-group platform-prod-rg \
   --query "backup.earliestRestoreDate"
 
-# Step 3: Validate backup integrity by checking the latest backup size
-# A backup size suddenly dropping to near-zero indicates a problem
+# Paso 3: Validar la integridad de la copia verificando el tamano de la copia mas reciente
+# Un tamano de copia que caiga repentinamente a casi cero indica un problema
 ```
 
-**Quarterly restore drill:**
+**Ejercicio de restauracion trimestral:**
 
 ```bash
-# Step 1: Set the restore point (24 hours ago for a recent snapshot)
+# Paso 1: Establecer el punto de restauracion (24 horas atras para una instantanea reciente)
 RESTORE_TIME=$(date -u -d "24 hours ago" +"%Y-%m-%dT%H:%M:%SZ")
 RESTORE_NAME="pg-users-prod-restore-$(date +%Y%m%d)"
 
-# Step 2: Restore to a temporary instance (takes 10-20 minutes)
+# Paso 2: Restaurar a una instancia temporal (toma 10-20 minutos)
 az postgres flexible-server restore \
   --name "$RESTORE_NAME" \
   --resource-group platform-prod-rg \
@@ -906,7 +907,7 @@ az postgres flexible-server restore \
   --restore-time "$RESTORE_TIME" \
   --zone 1
 
-# Step 3: Verify data integrity
+# Paso 3: Verificar la integridad de los datos
 PGPASSWORD=$(az keyvault secret show --vault-name kv-platform-users-prod \
   --name restore-test-password --query value -o tsv)
 
@@ -917,121 +918,121 @@ psql "host=$RESTORE_NAME.postgres.database.azure.com \
       SELECT 'deleted_users', COUNT(*) FROM users WHERE deleted_at IS NOT NULL UNION ALL
       SELECT 'user_sessions', COUNT(*) FROM user_sessions;"
 
-# Step 4: Spot-check recent records
+# Paso 4: Verificar registros recientes al azar
 psql ... -c "SELECT id, email, created_at FROM users ORDER BY created_at DESC LIMIT 5;"
 
-# Step 5: Verify RLS policies are intact
+# Paso 5: Verificar que las politicas RLS esten intactas
 psql ... -c "
   SELECT schemaname, tablename, policyname, permissive, roles, cmd
   FROM pg_policies
   WHERE tablename = 'users';
 "
 
-# Step 6: Tear down the test instance
+# Paso 6: Eliminar la instancia de prueba
 az postgres flexible-server delete \
   --name "$RESTORE_NAME" \
   --resource-group platform-prod-rg \
   --yes --no-wait
 ```
 
-**Restore drill success criteria:**
+**Criterios de exito del ejercicio de restauracion:**
 
-- All row counts match the source database at the restore point.
-- RLS policies are present and match the expected configuration.
-- No corruption errors during `SELECT` queries.
-- The restore completed within the expected time window.
+- Todos los recuentos de filas coinciden con la base de datos de origen en el punto de restauracion.
+- Las politicas RLS estan presentes y coinciden con la configuracion esperada.
+- Sin errores de corrupcion durante las consultas `SELECT`.
+- La restauracion se completo dentro de la ventana de tiempo esperada.
 
-### 7.2 Application State Backups
+### 7.2 Copias de seguridad del estado de la aplicacion
 
-The Users Service is largely **stateless**, but the following stateful data requires backup consideration:
+El Users Service es en gran medida **sin estado**, pero los siguientes datos con estado requieren consideracion de copia de seguridad:
 
-| Stateful Component | Backup Method | Verification | Frequency |
+| Componente con estado | Metodo de copia de seguridad | Verificacion | Frecuencia |
 |---|---|---|---|
-| PostgreSQL (primary) | Azure PITR (35-day retention) | Daily backup list / Quarterly restore drill | See 7.1 |
-| Service Bus subscriptions | No backup needed — events are transient | N/A | N/A |
-| JWKS cache | Regenerated from Auth Service on restart | N/A | N/A |
-| Configuration (Key Vault) | Azure Key Vault geo-replication | Check replication status monthly | Monthly |
+| PostgreSQL (primario) | Azure PITR (retencion de 35 dias) | Lista de copias diaria / ejercicio de restauracion trimestral | Ver 7.1 |
+| Suscripciones de Service Bus | No se necesita copia de seguridad — los eventos son transitorios | N/A | N/A |
+| Cache JWKS | Regenerada desde Auth Service al reiniciar | N/A | N/A |
+| Configuracion (Key Vault) | Replicacion geografica de Azure Key Vault | Verificar estado de replicacion mensualmente | Mensual |
 
-### 7.3 Key Vault Backup
+### 7.3 Copia de seguridad de Key Vault
 
-Key Vault secrets and certificates are backed up via Azure platform replication:
+Los secretos y certificados de Key Vault se respaldan mediante la replicacion de la plataforma Azure:
 
 ```bash
-# Verify geo-replication status
+# Verificar el estado de replicacion geografica
 az keyvault show \
   --name kv-platform-users-prod \
   --query "properties.enableSoftDelete"
 
-# Expected: true (soft-delete enabled — 90-day recovery window)
+# Esperado: true (eliminacion suave habilitada — ventana de recuperacion de 90 dias)
 
-# Backup a specific secret (for compliance archive)
+# Respaldar un secreto especifico (para archivo de cumplimiento)
 az keyvault secret backup \
   --vault-name kv-platform-users-prod \
   --name users-db-connection-string \
   --file /tmp/backup-users-db-connection.secret
 
-# Verify the backup file
+# Verificar el archivo de copia de seguridad
 ls -la /tmp/backup-users-db-connection.secret
 file /tmp/backup-users-db-connection.secret
-# Expected: non-empty file, identifiable as Azure Key Vault backup format
+# Esperado: archivo no vacio, identificable como formato de copia de seguridad de Azure Key Vault
 ```
 
-### 7.4 Disaster Recovery Backup Procedure
+### 7.4 Procedimiento de copia de seguridad para recuperacion ante desastres
 
-In the event of a total regional failure (West Europe unavailable):
+En caso de una falla regional total (West Europe no disponible):
 
 ```bash
-# Step 1: Restore PostgreSQL from geo-redundant backups to North Europe
+# Paso 1: Restaurar PostgreSQL desde copias con redundancia geografica a North Europe
 az postgres flexible-server geo-restore \
   --name pg-users-prod-dr \
   --resource-group platform-prod-rg \
   --source-server pg-users-prod \
   --location northeurope
 
-# Step 2: Validate the restored database
-# (Run same integrity checks as the quarterly restore drill in Section 7.1)
+# Paso 2: Validar la base de datos restaurada
+# (Ejecutar las mismas verificaciones de integridad que el ejercicio de restauracion trimestral en la Seccion 7.1)
 
-# Step 3: Point the North Europe read replica to the new primary
-# (See deployment runbook for DNS and connection string updates)
+# Paso 3: Apuntar la replica de lectura de North Europe al nuevo primario
+# (Ver el runbook de despliegue para actualizaciones de DNS y cadena de conexion)
 
-# Step 4: Verify service functionality
+# Paso 4: Verificar la funcionalidad del servicio
 curl -f -s -o /dev/null -w "%{http_code}" \
   https://users.internal.platform/api/health/ready
 
-# Step 5: Run synthetic user operations
-# Create, read, update, delete — full lifecycle test
+# Paso 5: Ejecutar operaciones sinteticas de usuario
+# Crear, leer, actualizar, eliminar — prueba de ciclo de vida completo
 ```
 
 ---
 
-## 8. Health Check Monitoring
+## 8. Monitoreo de verificaciones de salud
 
-### 8.1 Probe Architecture
+### 8.1 Arquitectura de sondas
 
 ```
                                 ┌──────────────────────────┐
                                 │  Azure Traffic Manager    │
-                                │  (30s interval)          │
+                                │  (intervalo 30s)         │
                                 └──────┬───────────────────┘
                                        │ GET /api/health/ready
                                        ▼
 ┌──────────────┐           ┌──────────────────────┐
-│ kubelet      │◄─────────►│ Users Service Pod    │
+│ kubelet      │◄─────────►│ Pod de Users Service │
 │ liveness     │  GET /api │                      │
-│ (15s period) │  /health/ │  ┌────────────────┐  │
-│              │  live     │  │ Readiness      │  │
-│              │           │  │ Probe          │  │
+│ (periodo 15s)│  /health/ │  ┌────────────────┐  │
+│              │  live     │  │ Sonda de       │  │
+│              │           │  │ readiness      │  │
 │ kubelet      │  GET /api │  │  - PostgreSQL  │  │
 │ readiness    │  /health/ │  │  - Auth Service│  │
-│ (5s period)  │  ready    │  │  - Service Bus │  │
+│ (periodo 5s) │  ready    │  │  - Service Bus │  │
 │              │           │  └────────────────┘  │
 │ kubelet      │           │                      │
 │ startup      │           └──────────────────────┘
-│ (initial 60s)│
+│ (60s inicial)│
 └──────────────┘
 ```
 
-### 8.2 Health Check Endpoints
+### 8.2 Endpoints de verificacion de salud
 
 **Liveness (`GET /api/health/live`):**
 
@@ -1047,7 +1048,7 @@ curl -f -s -o /dev/null -w "%{http_code}" \
 }
 ```
 
-No dependency checks — returns `200` as long as the process is running.
+Sin verificaciones de dependencias — devuelve `200` mientras el proceso se este ejecutando.
 
 **Readiness (`GET /api/health/ready`):**
 
@@ -1071,21 +1072,21 @@ No dependency checks — returns `200` as long as the process is running.
 }
 ```
 
-Returns `503` if any dependency is unhealthy. Deprecated endpoints are not included in readiness checks.
+Devuelve `503` si alguna dependencia no esta saludable. Los endpoints obsoletos no se incluyen en las verificaciones de readiness.
 
-**Readiness thresholds:**
+**Umbrales de readiness:**
 
-| Dependency | Timeout | Failure Count | Impact |
+| Dependencia | Timeout | Conteo de fallos | Impacto |
 |---|---|---|---|
-| PostgreSQL | 3s | 3 consecutive | Pod is NOT ready — no traffic |
-| Auth Service (gRPC) | 2s | 3 consecutive | Pod is NOT ready — JWT validation degraded |
-| Service Bus | 5s | 3 consecutive | Pod is NOT ready — event publishing degraded |
-| Graph API | 5s | 3 consecutive | Pod is ready but sync is degraded (not a hard dependency) |
+| PostgreSQL | 3s | 3 consecutivos | El pod NO esta listo — sin trafico |
+| Auth Service (gRPC) | 2s | 3 consecutivos | El pod NO esta listo — validacion JWT degradada |
+| Service Bus | 5s | 3 consecutivos | El pod NO esta listo — publicacion de eventos degradada |
+| Graph API | 5s | 3 consecutivos | El pod esta listo pero la sincronizacion esta degradada (no es una dependencia dura) |
 
-### 8.3 Probe Configuration
+### 8.3 Configuracion de sondas
 
 ```yaml
-# Deployment template — current production settings
+# Plantilla de despliegue — configuraciones actuales de produccion
 readinessProbe:
   httpGet:
     path: /api/health/ready
@@ -1094,7 +1095,7 @@ readinessProbe:
   periodSeconds: 5
   timeoutSeconds: 3
   successThreshold: 1
-  failureThreshold: 3                     # 15s (3 × 5s) before removal from service
+  failureThreshold: 3                     # 15s (3 x 5s) antes de la eliminacion del servicio
 
 livenessProbe:
   httpGet:
@@ -1104,7 +1105,7 @@ livenessProbe:
   periodSeconds: 15
   timeoutSeconds: 5
   successThreshold: 1
-  failureThreshold: 3                     # 45s without liveness = container restart
+  failureThreshold: 3                     # 45s sin liveness = reinicio del contenedor
 
 startupProbe:
   httpGet:
@@ -1112,10 +1113,10 @@ startupProbe:
     port: 7201
   initialDelaySeconds: 5
   periodSeconds: 10
-  failureThreshold: 6                     # 60s max startup time
+  failureThreshold: 6                     # 60s de tiempo maximo de inicio
 ```
 
-### 8.4 Prometheus Alert Rules
+### 8.4 Reglas de alerta de Prometheus
 
 ```yaml
 # prometheus/rules/users-service-alerts.yaml
@@ -1129,8 +1130,8 @@ groups:
           severity: critical
           team: platform-engineering
         annotations:
-          summary: "Users service is down"
-          description: "{{ $labels.instance }} has been unreachable for >1 minute."
+          summary: "El servicio de usuarios esta caido"
+          description: "{{ $labels.instance }} ha estado inalcanzable por >1 minuto."
 
       - alert: UsersServiceHighErrorRate
         expr: |
@@ -1142,8 +1143,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Users service error rate exceeds 1%"
-          description: "Error rate is {{ $value | humanizePercentage }} over 5 minutes."
+          summary: "La tasa de error del servicio de usuarios supera el 1%"
+          description: "La tasa de error es {{ $value | humanizePercentage }} en 5 minutos."
 
       - alert: UsersServiceHighLatency
         expr: |
@@ -1154,7 +1155,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Users service p95 latency exceeds 800ms"
+          summary: "La latencia p95 del servicio de usuarios supera los 800ms"
 
       - alert: UsersServiceAuthDown
         expr: users_auth_service_up{job="users-service"} == 0
@@ -1162,7 +1163,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Auth Service is unreachable from Users Service"
+          summary: "Auth Service no esta accesible desde Users Service"
 
       - alert: UsersServicePostgresDown
         expr: pg_up{job="users-service"} == 0
@@ -1170,7 +1171,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "PostgreSQL is unreachable from Users Service"
+          summary: "PostgreSQL no esta accesible desde Users Service"
 
       - alert: UsersServiceSyncFailed
         expr: graph_api_sync_success_total{job="users-service"} == 0
@@ -1178,7 +1179,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Entra ID sync has not succeeded in 24 hours"
+          summary: "La sincronizacion de Entra ID no ha tenido exito en 24 horas"
 
       - alert: UsersServicePurgeJobFailed
         expr: purge_job_success{job="users-service"} == 0
@@ -1186,7 +1187,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Soft-delete purge job failed in the last 24 hours"
+          summary: "El trabajo de purga de eliminacion suave fallo en las ultimas 24 horas"
 
       - alert: UsersServiceHighConnectionCount
         expr: |
@@ -1196,7 +1197,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "PostgreSQL connections exceed 80% of max (150)"
+          summary: "Las conexiones PostgreSQL superan el 80% del maximo (150)"
 
       - alert: UsersServiceEventConsumerBacklog
         expr: |
@@ -1206,7 +1207,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Event consumer backlog exceeds 1,000 messages"
+          summary: "El backlog del consumidor de eventos supera los 1,000 mensajes"
 
       - alert: UsersServiceGraphApiThrottling
         expr: |
@@ -1216,29 +1217,29 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Graph API throttling detected"
-          description: "Throttled requests at {{ $value | humanizeRate }} per second."
+          summary: "Limitacion de Graph API detectada"
+          description: "Solicitudes limitadas a {{ $value | humanizeRate }} por segundo."
 ```
 
-### 8.5 Synthetic Monitoring
+### 8.5 Monitoreo sintetico
 
-Synthetic transactions run every 5 minutes from two external locations to validate end-to-end functionality:
+Las transacciones sinteticas se ejecutan cada 5 minutos desde dos ubicaciones externas para validar la funcionalidad de extremo a extremo:
 
 ```bash
-# Synthetic health check — simulates user lifecycle operations
-# Executed via Azure Monitor Availability Tests
+# Verificacion de salud sintetica — simula operaciones del ciclo de vida del usuario
+# Ejecutada mediante Pruebas de Disponibilidad de Azure Monitor
 
-# Step 1: Liveness check
+# Paso 1: Verificacion de liveness
 curl -f -s -o /dev/null -w "%{http_code}" \
   https://users.internal.platform/api/health/live
-# Expected: 200
+# Esperado: 200
 
-# Step 2: Readiness check
+# Paso 2: Verificacion de readiness
 curl -f -s -o /dev/null -w "%{http_code}" \
   https://users.internal.platform/api/health/ready
-# Expected: 200
+# Esperado: 200
 
-# Step 3: List users (paginated, tenant-scoped, requires valid JWT)
+# Paso 3: Listar usuarios (paginado, con ambito de inquilino, requiere JWT valido)
 HEALTH_TOKEN=$(curl -s -X POST https://auth.internal.platform/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"healthcheck","password":"..."}' | jq -r '.access_token')
@@ -1247,7 +1248,7 @@ curl -s -H "Authorization: Bearer $HEALTH_TOKEN" \
   "https://users.internal.platform/api/users?pageSize=5" | \
   jq -e '.data | length > 0' > /dev/null
 
-# Step 4: Get a specific user by ID (from the list response)
+# Paso 4: Obtener un usuario especifico por ID (de la respuesta de lista)
 USER_ID=$(curl -s -H "Authorization: Bearer $HEALTH_TOKEN" \
   "https://users.internal.platform/api/users?pageSize=1" | \
   jq -r '.data[0].id')
@@ -1257,83 +1258,83 @@ curl -s -H "Authorization: Bearer $HEALTH_TOKEN" \
   jq -e '.id == "'$USER_ID'"' > /dev/null
 ```
 
-### 8.6 Degraded Mode Behavior
+### 8.6 Comportamiento en modo degradado
 
-When a dependency is unhealthy, the service enters degraded mode:
+Cuando una dependencia no esta saludable, el servicio entra en modo degradado:
 
-| Dependency Unhealthy | Service Behavior | Ready Probe |
+| Dependencia no saludable | Comportamiento del servicio | Sonda de readiness |
 |---|---|---|
-| **PostgreSQL** | All user CRUD operations fail with 503. JWKS validation cache may still serve requests for 5 min (Auth Service call not required for read-only JWT validation). | Unhealthy |
-| **Auth Service** | JWKS cache serves token validation for up to 5 min. After cache expires, all authenticated requests fail with 503. The `/api/health/live` endpoint and unauthenticated endpoints still work. | Unhealthy (after cache expires) |
-| **Service Bus** | Event publishing is queued in-process (bounded buffer: 5,000 events). If buffer fills, oldest events are dropped. Event consumption pauses (auth events ignored). | Unhealthy if buffer > 80% |
-| **Graph API** | Entra ID sync fails; existing profiles continue to serve stale data. No impact on CRUD operations. | Healthy (soft dependency — sync-only impact) |
+| **PostgreSQL** | Todas las operaciones CRUD de usuario fallan con 503. La cache de validacion JWKS aun puede servir solicitudes durante 5 min (no se requiere llamada a Auth Service para validacion JWT de solo lectura). | No saludable |
+| **Auth Service** | La cache JWKS sirve validacion de tokens hasta por 5 min. Despues de que la cache expire, todas las solicitudes autenticadas fallan con 503. El endpoint `/api/health/live` y los endpoints no autenticados aun funcionan. | No saludable (despues de que expire la cache) |
+| **Service Bus** | La publicacion de eventos se pone en cola en proceso (buffer limitado: 5,000 eventos). Si el buffer se llena, los eventos mas antiguos se descartan. El consumo de eventos se pausa (los eventos de autenticacion se ignoran). | No saludable si el buffer > 80% |
+| **Graph API** | La sincronizacion de Entra ID falla; los perfiles existentes continuan sirviendo datos desactualizados. Sin impacto en las operaciones CRUD. | Saludable (dependencia blanda — impacto solo en sincronizacion) |
 
 ---
 
-## 9. Runbook Automation
+## 9. Automatizacion de runbooks
 
-The following procedures are candidates for automation via Azure Automation Runbooks or Azure DevOps Pipelines:
+Los siguientes procedimientos son candidatos para automatizacion mediante Azure Automation Runbooks o Azure DevOps Pipelines:
 
-| Procedure | Current State | Automation Target | Priority |
+| Procedimiento | Estado actual | Objetivo de automatizacion | Prioridad |
 |---|---|---|---|
-| Entra ID sync health check | Manual (daily) | Grafana alert + scheduled report | High |
-| Soft-delete purge job monitoring | Manual (daily) | Alert-based notification | High |
-| PostgreSQL backup restore drill | Manual (quarterly) | Azure DevOps pipeline | High |
-| Capacity report generation | Manual (monthly) | Scheduled Grafana report | Medium |
-| Dependency vulnerability scan | Automated (weekly) | Already automated | Complete |
-| PostgreSQL index health check | Manual (weekly) | Scheduled SQL script + report | Medium |
-| Quota usage report (Graph API) | Manual (monthly) | Azure Automation runbook | Low |
+| Verificacion de salud de sincronizacion de Entra ID | Manual (diario) | Alerta de Grafana + informe programado | Alta |
+| Monitoreo del trabajo de purga de eliminacion suave | Manual (diario) | Notificacion basada en alertas | Alta |
+| Ejercicio de restauracion de copia de seguridad de PostgreSQL | Manual (trimestral) | Pipeline de Azure DevOps | Alta |
+| Generacion de informe de capacidad | Manual (mensual) | Informe programado de Grafana | Media |
+| Escaneo de vulnerabilidades de dependencias | Automatizado (semanal) | Ya automatizado | Completa |
+| Verificacion de salud de indices de PostgreSQL | Manual (semanal) | Script SQL programado + informe | Media |
+| Informe de uso de cuota (Graph API) | Manual (mensual) | Runbook de Azure Automation | Baja |
 
 ---
 
-## 10. Escalation and Support
+## 10. Escalamiento y soporte
 
-### 10.1 On-Call Rotation
+### 10.1 Rotacion de guardia
 
-| Role | Contact | Response Time |
+| Rol | Contacto | Tiempo de respuesta |
 |---|---|---|
-| Primary on-call (SRE) | PagerDuty `platform-primary` | 15 min |
-| Secondary on-call (Platform) | PagerDuty `platform-secondary` | 30 min |
-| Engineering manager | Slack `@platform-eng-manager` | 1 hour |
-| InfoSec | Slack `#infosec` | Varies by severity |
+| Guardia primario (SRE) | PagerDuty `platform-primary` | 15 min |
+| Guardia secundario (Plataforma) | PagerDuty `platform-secondary` | 30 min |
+| Gerente de ingenieria | Slack `@platform-eng-manager` | 1 hora |
+| InfoSec | Slack `#infosec` | Variable segun severidad |
 
-### 10.2 Severity Definitions
+### 10.2 Definiciones de severidad
 
-| Severity | Definition | Response | Escalate After |
+| Severidad | Definicion | Respuesta | Escalar despues de |
 |---|---|---|---|
-| **SEV1** | Service unavailable or unable to read/write user profiles | 15 min | 30 min |
-| **SEV2** | Degraded performance, elevated errors, or partial feature outage (e.g., sync failing, purge stalled) | 30 min | 2 hours |
-| **SEV3** | Non-critical issue, cosmetic, or single-tenant problem | Next business day | 1 week |
-| **SEV4** | Minor bug, documentation improvement | Next sprint | N/A |
+| **SEV1** | Servicio no disponible o imposibilidad de leer/escribir perfiles de usuario | 15 min | 30 min |
+| **SEV2** | Rendimiento degradado, errores elevados o interrupcion parcial de funcionalidad (ej., sincronizacion fallando, purga estancada) | 30 min | 2 horas |
+| **SEV3** | Problema no critico, cosmetico o problema de un solo inquilino | Siguiente dia habil | 1 semana |
+| **SEV4** | Error menor, mejora de documentacion | Siguiente sprint | N/A |
 
-### 10.3 Handoff Checklist
+### 10.3 Lista de verificacion de transferencia
 
-When handing off to the next on-call engineer:
+Al transferir al siguiente ingeniero de guardia:
 
-- [ ] Current incident status (if any) reviewed and documented
-- [ ] Dashboard snapshots captured for any ongoing anomalies
-- [ ] Daily checklist from Section 2.1 completed
-- [ ] Entra ID sync status verified as healthy
-- [ ] Soft-delete purge job status confirmed
-- [ ] PagerDuty rotation acknowledged and forwarded
-- [ ] Any scheduled maintenance windows communicated
+- [ ] Estado actual del incidente (si lo hay) revisado y documentado
+- [ ] Capturas de dashboard tomadas para cualquier anomalia en curso
+- [ ] Lista de verificacion diaria de la Seccion 2.1 completada
+- [ ] Estado de sincronizacion de Entra ID verificado como saludable
+- [ ] Estado del trabajo de purga de eliminacion suave confirmado
+- [ ] Rotacion de PagerDuty confirmada y reenviada
+- [ ] Cualquier ventana de mantenimiento programada comunicada
 
-### 10.4 Related Documents
+### 10.4 Documentos relacionados
 
-| Document | Location |
+| Documento | Ubicacion |
 |---|---|
-| Incident Response Runbook | `docs/runbooks/incident-response.md` |
-| Deployment Runbook | `docs/runbooks/deployment.md` |
-| Rollback Runbook | `docs/runbooks/rollback.md` |
-| Restart Service | `docs/runbooks/restart-service.md` |
-| Security Architecture | `docs/architecture/security.md` |
-| Deployment View | `docs/architecture/deployment-view.md` |
-| Variables & Configuration | `docs/api/variables.md` |
-| Events Reference | `docs/api/events.md` |
-| Monitoring Configuration | `docs/decisions/monitoring.md` |
-| Observability Decisions | `docs/decisions/observability.md` |
+| Runbook de respuesta a incidentes | `docs/runbooks/incident-response.md` |
+| Runbook de despliegue | `docs/runbooks/deployment.md` |
+| Runbook de revertir | `docs/runbooks/rollback.md` |
+| Reinicio del servicio | `docs/runbooks/restart-service.md` |
+| Arquitectura de seguridad | `docs/architecture/security.md` |
+| Vista de despliegue | `docs/architecture/deployment-view.md` |
+| Variables y configuracion | `docs/api/variables.md` |
+| Referencia de eventos | `docs/api/events.md` |
+| Configuracion de monitoreo | `docs/decisions/monitoring.md` |
+| Decisiones de observabilidad | `docs/decisions/observability.md` |
 
 ---
 
-*Maintained by the Platform Engineering Team. Last updated: 2026-07-26.*
-*For questions or corrections, open an issue or contact `#platform-eng` on Slack.*
+*Mantenido por el Equipo de Ingenieria de Plataforma. Ultima actualizacion: 2026-07-26.*
+*Para preguntas o correcciones, abra un issue o contacte a `#platform-eng` en Slack.*

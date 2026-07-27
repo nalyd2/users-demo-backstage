@@ -1,171 +1,171 @@
-# Monitoring Strategy — Users Service
+# Estrategia de Monitoreo — Users Service
 
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
-- **Version:** 1.0
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
+- **Versión:** 1.0
 
-## Purpose and Scope
+## Propósito y Alcance
 
-This document defines the monitoring strategy for the Users Service. It covers metrics, dashboards, alerting, SLOs, and error budget policies specific to user management operations, event processing, and Graph API integration.
+Este documento define la estrategia de monitoreo para el Users Service. Cubre métricas, paneles, alertas, SLOs y políticas de presupuesto de errores específicas para operaciones de gestión de usuarios, procesamiento de eventos e integración con Graph API.
 
-## Service Level Objectives
+## Objetivos de Nivel de Servicio (SLO)
 
-### Availability Target
+### Objetivo de Disponibilidad
 
-| SLO | Target | Window |
+| SLO | Objetivo | Ventana |
 |---|---|---|
-| Availability | 99.95% | Rolling 30 days |
-| User read success rate | >= 99.9% | Rolling 7 days |
-| User write success rate | >= 99.5% | Rolling 7 days |
-| Event processing success rate | >= 99.9% | Rolling 7 days |
-| User CRUD latency (p99) | <= 500 ms | Rolling 7 days |
-| Event processing lag | <= 30 seconds | Rolling 7 days |
+| Disponibilidad | 99.95% | 30 días continuos |
+| Tasa de éxito de lectura de usuarios | >= 99.9% | 7 días continuos |
+| Tasa de éxito de escritura de usuarios | >= 99.5% | 7 días continuos |
+| Tasa de éxito de procesamiento de eventos | >= 99.9% | 7 días continuos |
+| Latencia CRUD de usuario (p99) | <= 500 ms | 7 días continuos |
+| Retraso de procesamiento de eventos | <= 30 segundos | 7 días continuos |
 
-### SLI Definitions
+### Definiciones de SLI
 
-#### Availability SLI
+#### SLI de Disponibilidad
 ```
-good_requests = count of HTTP 2xx + 4xx responses
-availability = good_requests / total_requests (excluding health probes)
-```
-
-#### Event Processing Lag SLI
-```
-lag = current_timestamp - event_enqueued_time (per event)
-lag_sli_p99 = p99 of all event processing lags over 5 minutes
+solicitudes_exitosas = conteo de respuestas HTTP 2xx + 4xx
+disponibilidad = solicitudes_exitosas / total_solicitudes (excluyendo sondeos de salud)
 ```
 
-## Key Metrics
+#### SLI de Retraso de Procesamiento de Eventos
+```
+retraso = timestamp_actual - timestamp_encolado_evento (por evento)
+retraso_sli_p99 = p99 de todos los retrasos de procesamiento de eventos durante 5 minutos
+```
 
-### User Operations Metrics
+## Métricas Clave
 
-| Metric | Type | Labels | Description |
+### Métricas de Operaciones de Usuario
+
+| Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_read_requests_total` | Counter | endpoint, result, tenant_id | User read request count |
-| `users_write_requests_total` | Counter | operation (create/update/delete/restore), result | User write operation count |
-| `users_request_duration_seconds` | Histogram | operation, endpoint | Request latency |
-| `users_active_total` | Gauge | tenant_id | Current active user count |
-| `users_soft_deleted_total` | Gauge | tenant_id | Current soft-deleted user count |
+| `users_read_requests_total` | Contador | endpoint, result, tenant_id | Conteo de solicitudes de lectura de usuario |
+| `users_write_requests_total` | Contador | operation (create/update/delete/restore), result | Conteo de operaciones de escritura de usuario |
+| `users_request_duration_seconds` | Histograma | operation, endpoint | Latencia de solicitud |
+| `users_active_total` | Indicador | tenant_id | Conteo actual de usuarios activos |
+| `users_soft_deleted_total` | Indicador | tenant_id | Conteo actual de usuarios en soft-delete |
 
-### Event Processing Metrics
+### Métricas de Procesamiento de Eventos
 
-| Metric | Type | Labels | Description |
+| Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_auth_events_consumed_total` | Counter | event_type, result | Auth events consumed from Service Bus |
-| `users_auth_events_lag_seconds` | Gauge | event_type | Current processing lag for auth events |
-| `users_auth_events_lag_seconds_bucket` | Histogram | event_type | Distribution of event processing lag |
-| `users_events_published_total` | Counter | event_type, result | User events published |
-| `users_events_publish_duration_seconds` | Histogram | event_type | Event publishing latency |
-| `users_dead_letter_queue_depth` | Gauge | topic | Current DLQ message count |
+| `users_auth_events_consumed_total` | Contador | event_type, result | Eventos de auth consumidos de Service Bus |
+| `users_auth_events_lag_seconds` | Indicador | event_type | Retraso actual de procesamiento para eventos de auth |
+| `users_auth_events_lag_seconds_bucket` | Histograma | event_type | Distribución del retraso de procesamiento de eventos |
+| `users_events_published_total` | Contador | event_type, result | Eventos de usuario publicados |
+| `users_events_publish_duration_seconds` | Histograma | event_type | Latencia de publicación de eventos |
+| `users_dead_letter_queue_depth` | Indicador | topic | Conteo actual de mensajes en DLQ |
 
-### Graph API Metrics
+### Métricas de Graph API
 
-| Metric | Type | Labels | Description |
+| Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_graph_api_calls_total` | Counter | operation, result | Graph API call count |
-| `users_graph_api_duration_seconds` | Histogram | operation | Graph API latency |
-| `users_graph_api_errors_total` | Counter | operation, error_code | Graph API errors |
-| `users_graph_api_cache_hit_ratio` | Gauge | — | Graph API response cache hit rate |
+| `users_graph_api_calls_total` | Contador | operation, result | Conteo de llamadas a Graph API |
+| `users_graph_api_duration_seconds` | Histograma | operation | Latencia de Graph API |
+| `users_graph_api_errors_total` | Contador | operation, error_code | Errores de Graph API |
+| `users_graph_api_cache_hit_ratio` | Indicador | — | Tasa de aciertos de caché de respuestas de Graph API |
 
-### System Metrics
+### Métricas del Sistema
 
-| Metric | Type | Labels | Description |
+| Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_requests_total` | Counter | endpoint, method, status_code | HTTP request count |
-| `users_request_duration_seconds` | Histogram | endpoint, method | HTTP request latency |
-| `users_db_connection_pool_utilization` | Gauge | host | Database connection pool usage |
-| `users_db_query_duration_seconds` | Histogram | operation, table | Database query latency |
-| `users_db_errors_total` | Counter | operation, error_code | Database errors |
+| `users_requests_total` | Contador | endpoint, method, status_code | Conteo de solicitudes HTTP |
+| `users_request_duration_seconds` | Histograma | endpoint, method | Latencia de solicitud HTTP |
+| `users_db_connection_pool_utilization` | Indicador | host | Uso del pool de conexiones de base de datos |
+| `users_db_query_duration_seconds` | Histograma | operation, table | Latencia de consulta a base de datos |
+| `users_db_errors_total` | Contador | operation, error_code | Errores de base de datos |
 
-## Grafana Dashboards
+## Paneles de Grafana
 
-### Users Service Overview Dashboard
+### Panel General del Users Service
 
-**Purpose:** Primary dashboard for on-call SRE.
+**Propósito:** Panel principal para el SRE de guardia.
 
-| Panel | Metric / Query | Visualization |
+| Panel | Métrica / Consulta | Visualización |
 |---|---|---|
-| Service Status | `users_service_up` | Stat (green/red) |
-| Request Rate | `rate(users_requests_total[5m])` | Time series |
-| Error Rate (5xx) | `rate(users_requests_total{status=~"5.."}[5m]) / rate(users_requests_total[5m]) * 100` | Time series |
-| P50/P95/P99 Latency | `histogram_quantile(0.99, rate(users_request_duration_seconds_bucket[5m]))` | Time series |
-| Active Users | `users_active_total` | Stat + time series |
-| Event Processing Lag | `users_auth_events_lag_seconds` | Time series (by event type) |
-| Soft-Delete Queue | `users_soft_deleted_total` | Time series |
-| DB Connection Pool | `users_db_connection_pool_utilization` | Gauge |
+| Estado del Servicio | `users_service_up` | Estadística (verde/rojo) |
+| Tasa de Solicitudes | `rate(users_requests_total[5m])` | Serie temporal |
+| Tasa de Error (5xx) | `rate(users_requests_total{status=~"5.."}[5m]) / rate(users_requests_total[5m]) * 100` | Serie temporal |
+| Latencia P50/P95/P99 | `histogram_quantile(0.99, rate(users_request_duration_seconds_bucket[5m]))` | Serie temporal |
+| Usuarios Activos | `users_active_total` | Estadística + serie temporal |
+| Retraso de Procesamiento de Eventos | `users_auth_events_lag_seconds` | Serie temporal (por tipo de evento) |
+| Cola de Soft-Delete | `users_soft_deleted_total` | Serie temporal |
+| Pool de Conexiones DB | `users_db_connection_pool_utilization` | Indicador |
 
-### Event Processing Dashboard
+### Panel de Procesamiento de Eventos
 
-**Purpose:** Monitor auth event consumption and user event publishing health.
+**Propósito:** Monitorear el consumo de eventos de auth y la salud de publicación de eventos de usuario.
 
-| Panel | Metric |
+| Panel | Métrica |
 |---|---|
-| Auth Events Consumed Rate | `rate(users_auth_events_consumed_total[5m])` by event_type |
-| Event Processing Lag | `users_auth_events_lag_seconds` by event_type |
-| Event Processing Duration | `histogram_quantile(0.99, rate(users_auth_events_processing_duration_seconds_bucket[5m]))` |
-| User Events Published Rate | `rate(users_events_published_total[5m])` by event_type |
-| Dead Letter Queue Depth | `users_dead_letter_queue_depth` |
+| Tasa de Eventos de Auth Consumidos | `rate(users_auth_events_consumed_total[5m])` por event_type |
+| Retraso de Procesamiento de Eventos | `users_auth_events_lag_seconds` por event_type |
+| Duración de Procesamiento de Eventos | `histogram_quantile(0.99, rate(users_auth_events_processing_duration_seconds_bucket[5m]))` |
+| Tasa de Eventos de Usuario Publicados | `rate(users_events_published_total[5m])` por event_type |
+| Profundidad de Cola de Mensajes Fallidos | `users_dead_letter_queue_depth` |
 
-### Graph API Health Dashboard
+### Panel de Salud de Graph API
 
-**Purpose:** Monitor Microsoft Graph API integration health.
+**Propósito:** Monitorear la salud de la integración con Microsoft Graph API.
 
-| Panel | Metric |
+| Panel | Métrica |
 |---|---|
-| Graph API Call Rate | `rate(users_graph_api_calls_total[5m])` by operation |
-| Graph API Error Rate | `rate(users_graph_api_errors_total[5m])` by error_code |
-| Graph API Latency P99 | `histogram_quantile(0.99, rate(users_graph_api_duration_seconds_bucket[5m]))` |
-| Cache Hit Ratio | `users_graph_api_cache_hit_ratio` |
+| Tasa de Llamadas a Graph API | `rate(users_graph_api_calls_total[5m])` por operation |
+| Tasa de Error de Graph API | `rate(users_graph_api_errors_total[5m])` por error_code |
+| Latencia P99 de Graph API | `histogram_quantile(0.99, rate(users_graph_api_duration_seconds_bucket[5m]))` |
+| Tasa de Aciertos de Caché | `users_graph_api_cache_hit_ratio` |
 
-## Prometheus Alert Rules
+## Reglas de Alerta de Prometheus
 
-### Critical Alerts (Page)
+### Alertas Críticas (Página)
 
-| Alert | Condition | For | Description |
+| Alerta | Condición | Durante | Descripción |
 |---|---|---|---|
-| UsersServiceDown | `absent(users_service_up == 1)` | 1m | Service is down |
-| UsersServiceHighErrorRate | 5xx rate > 2% | 2m | Error rate exceeds threshold |
-| UsersServiceP99LatencyBreached | p99 > 1000ms | 3m | High latency detected |
-| UsersServiceAuthDepFailed | Auth Service JWKS fetch failing | 1m | Cannot validate tokens |
-| UsersServiceDatabaseDown | DB health check failing | 30s | Database unreachable |
+| UsersServiceDown | `absent(users_service_up == 1)` | 1m | El servicio está caído |
+| UsersServiceHighErrorRate | Tasa 5xx > 2% | 2m | La tasa de error supera el umbral |
+| UsersServiceP99LatencyBreached | p99 > 1000ms | 3m | Latencia alta detectada |
+| UsersServiceAuthDepFailed | Fallo al obtener JWKS de Auth Service | 1m | No se pueden validar tokens |
+| UsersServiceDatabaseDown | Fallo en verificación de salud de DB | 30s | Base de datos no accesible |
 
-### Warning Alerts (Slack)
+### Alertas de Advertencia (Slack)
 
-| Alert | Condition | For |
+| Alerta | Condición | Durante |
 |---|---|---|
-| EventProcessingLagHigh | Lag > 60 seconds | 5m |
-| EventProcessingErrorRate | Event processing errors > 5% | 5m |
-| GraphApiErrorRate | Graph API errors > 10% | 5m |
-| DbConnectionPoolHigh | Pool utilization > 80% | 5m |
-| SoftDeleteQueueGrowing | Soft-deleted count growing > 10%/hour | 1h |
-| DqlMessagesAccumulating | DLQ depth > 100 | 5m |
+| EventProcessingLagHigh | Retraso > 60 segundos | 5m |
+| EventProcessingErrorRate | Errores de procesamiento de eventos > 5% | 5m |
+| GraphApiErrorRate | Errores de Graph API > 10% | 5m |
+| DbConnectionPoolHigh | Utilización del pool > 80% | 5m |
+| SoftDeleteQueueGrowing | Conteo de soft-delete creciendo > 10%/hora | 1h |
+| DqlMessagesAccumulating | Profundidad DLQ > 100 | 5m |
 
-## PagerDuty Integration
+## Integración con PagerDuty
 
-- **Service:** Users Service Production
-- **Integration type:** Prometheus Alertmanager
-- **Escalation:** SRE Primary -> SRE Secondary (15 min) -> Engineering Manager (15 min)
-- **Alert enrichment:** Grafana dashboard link, runbook link, alert details
+- **Servicio:** Users Service Producción
+- **Tipo de integración:** Prometheus Alertmanager
+- **Escalación:** SRE Primario -> SRE Secundario (15 min) -> Gerente de Ingeniería (15 min)
+- **Enriquecimiento de alertas:** Enlace al panel de Grafana, enlace al runbook, detalles de la alerta
 
-## Error Budget Policy
+## Política de Presupuesto de Errores
 
-### Calculation
+### Cálculo
 
-For 99.95% availability over a 30-day window:
+Para 99.95% de disponibilidad en una ventana de 30 días:
 ```
-allowable_unavailability = 30 * 24 * 3600 * (1 - 0.9995) = 1296 seconds
+indisponibilidad_permitida = 30 * 24 * 3600 * (1 - 0.9995) = 1296 segundos
 ```
 
-### Budget Consequences
+### Consecuencias del Presupuesto
 
-| Budget State | Policy |
+| Estado del Presupuesto | Política |
 |---|---|
-| >= 50% remaining | Normal deployments |
-| 20%-50% | Deployments require SRE approval |
-| 5%-20% | Deployment freeze except hotfixes |
-| < 5% | Full freeze, reliability focus only |
-| Exhausted (0%) | Complete freeze, post-mortem required |
+| >= 50% restante | Despliegues normales |
+| 20%-50% | Los despliegues requieren aprobación de SRE |
+| 5%-20% | Congelación de despliegues excepto hotfixes |
+| < 5% | Congelación total, solo enfoque en confiabilidad |
+| Agotado (0%) | Congelación completa, se requiere post-mortem |
 
-### Quarterly SLO Review
+### Revisión Trimestral de SLO
 
-Review covers SLO attainment, budget consumption patterns, policy effectiveness, and target tuning.
+La revisión cubre el logro de SLO, patrones de consumo del presupuesto, efectividad de la política y ajuste de objetivos.

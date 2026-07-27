@@ -1,33 +1,33 @@
-# Knowledge Graph
+# Grafo de Conocimiento
 
-## Overview
+## Descripcion General
 
-A knowledge graph represents entities and their relationships extracted from the Users Service documentation. It enables graph-based queries like "Show me all services that depend on the Users Service" or "What happens if the Auth Service is unavailable?"
+Un grafo de conocimiento representa entidades y sus relaciones extraidas de la documentacion del Servicio de Usuarios. Permite consultas basadas en grafos como "Muestrame todos los servicios que dependen del Servicio de Usuarios" o "Que sucede si el Servicio de Autenticacion no esta disponible?"
 
-## Entity Types
+## Tipos de Entidad
 
-| Entity Type | Source | Example |
+| Tipo de Entidad | Fuente | Ejemplo |
 |---|---|---|
-| **Service** | `catalog-info.yaml` -> `kind: Component` | `users-service`, `auth-service` |
+| **Servicio** | `catalog-info.yaml` -> `kind: Component` | `users-service`, `auth-service` |
 | **API** | `catalog-info.yaml` -> `kind: API` | `users-api`, `auth-api` |
-| **System** | `catalog-info.yaml` -> `kind: System` | `user-management-system`, `iam-system` |
-| **Domain** | `catalog-info.yaml` -> `kind: Domain` | `identity` |
-| **Resource** | `catalog-info.yaml` -> `kind: Resource` | `users-database`, `auth-redis-cache` |
-| **Technology** | `docs/architecture/technology-stack.md` | `.NET 10`, `PostgreSQL 16`, `Dapper`, `Npgsql` |
-| **ADR** | `docs/adr/*.md` | `ADR-001 — PostgreSQL over MongoDB`, `ADR-002 — JWT Validation at Gateway vs. Service Level` |
-| **Endpoint** | `openapi.yaml` paths | `GET /api/users`, `POST /api/users`, `PUT /api/users/{id}` |
-| **Event** | `docs/api/events.md` | `user.created`, `user.updated`, `user.deleted` |
-| **Consumed Event** | `docs/api/events.md` | `user.login`, `user.logout`, `token.revoked` |
-| **User Profile** | `catalog-info.yaml` + schema | `user (sub, roles, tid)`, `tenant` |
-| **Role** | `openapi.yaml` security scheme | `admin`, `operator`, `user` |
-| **Tenant** | Architecture docs, RBAC model | `tenant-uuid` — multi-tenancy isolation boundary |
-| **Audit Log** | `docs/architecture/containers.md` | `audit_log table`, `event_deduplication table` |
+| **Sistema** | `catalog-info.yaml` -> `kind: System` | `user-management-system`, `iam-system` |
+| **Dominio** | `catalog-info.yaml` -> `kind: Domain` | `identity` |
+| **Recurso** | `catalog-info.yaml` -> `kind: Resource` | `users-database`, `auth-redis-cache` |
+| **Tecnologia** | `docs/architecture/technology-stack.md` | `.NET 10`, `PostgreSQL 16`, `Dapper`, `Npgsql` |
+| **ADR** | `docs/adr/*.md` | `ADR-001 -- PostgreSQL sobre MongoDB`, `ADR-002 -- Validacion JWT a nivel de Gateway vs. Servicio` |
+| **Endpoint** | Rutas de `openapi.yaml` | `GET /api/users`, `POST /api/users`, `PUT /api/users/{id}` |
+| **Evento** | `docs/api/events.md` | `user.created`, `user.updated`, `user.deleted` |
+| **Evento Consumido** | `docs/api/events.md` | `user.login`, `user.logout`, `token.revoked` |
+| **Perfil de Usuario** | `catalog-info.yaml` + esquema | `user (sub, roles, tid)`, `tenant` |
+| **Rol** | Esquema de seguridad de `openapi.yaml` | `admin`, `operator`, `user` |
+| **Inquilino** | Documentos de arquitectura, modelo RBAC | `tenant-uuid` -- limite de aislamiento de multi-inquilino |
+| **Registro de Auditoria** | `docs/architecture/containers.md` | `tabla audit_log`, `tabla event_deduplication` |
 | **Runbook** | `docs/runbooks/*.md` | `restart-service`, `incident-response` |
-| **Team** | `catalog-info.yaml` -> `spec.owner` | `platform-engineering` |
+| **Equipo** | `catalog-info.yaml` -> `spec.owner` | `platform-engineering` |
 
-## Relationship Types
+## Tipos de Relacion
 
-| Relationship | Source Field | Example |
+| Relacion | Campo Fuente | Ejemplo |
 |---|---|---|
 | `DEPENDS_ON` | `catalog-info.yaml` -> `spec.dependsOn` | `users-service -> auth-service` |
 | `PROVIDES_API` | `catalog-info.yaml` -> `spec.providesApis` | `users-service -> users-api` |
@@ -35,22 +35,22 @@ A knowledge graph represents entities and their relationships extracted from the
 | `PART_OF` | `catalog-info.yaml` -> `spec.system` | `users-service -> user-management-system` |
 | `OWNS` | `catalog-info.yaml` -> `spec.owner` | `platform-engineering -> users-service` |
 | `PUBLISHES` | `docs/api/events.md` | `users-service -> user.created` |
-| `SUBSCRIBES_TO` | `docs/api/events.md` | `users-service -> user.login` (from auth-service) |
+| `SUBSCRIBES_TO` | `docs/api/events.md` | `users-service -> user.login` (de auth-service) |
 | `USES_TECHNOLOGY` | `docs/architecture/technology-stack.md` | `users-service -> PostgreSQL 16` |
-| `HAS_RUNBOOK` | Mapped by convention | `users-service -> restart-service` |
-| `RELATED_ADR` | Cross-reference links | `users-service -> ADR-002` |
+| `HAS_RUNBOOK` | Mapeado por convencion | `users-service -> restart-service` |
+| `RELATED_ADR` | Enlaces de referencia cruzada | `users-service -> ADR-002` |
 | `ENFORCES_RBAC` | `docs/architecture/security.md` | `users-service -> admin` |
 | `STORES_IN` | `docs/architecture/containers.md` | `users-service -> users-database` |
 | `VALIDATES_WITH` | `docs/architecture/context.md` | `users-service -> auth-service (JWT)` |
 | `ISOLATES_TENANT` | `docs/architecture/security.md` | `users-service -> tenant` |
-| `AUDITS_TO` | `docs/architecture/containers.md` | `users-service -> audit_log table` |
+| `AUDITS_TO` | `docs/architecture/containers.md` | `users-service -> tabla audit_log` |
 
-## Graph Construction
+## Construccion del Grafo
 
-### Source Extraction Pipeline
+### Pipeline de Extraccion de Fuentes
 
 ```yaml
-# Conceptual — not implemented code
+# Conceptual -- no es codigo implementado
 pipeline:
   - extract_catalog_entities:
       source: catalog-info.yaml
@@ -77,51 +77,51 @@ pipeline:
       output: nodes (Tenant) + relationships (isolates_tenant)
 
   - extract_cross_references:
-      source: all markdown links
+      source: todos los enlaces markdown
       output: relationships (related, documented_in)
 ```
 
-### Graph Database
+### Base de Datos de Grafos
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Database** | Neo4j (managed) or Azure Cosmos DB Gremlin API |
-| **Update** | Incremental on each push to `main` |
-| **Rebuild** | Full rebuild nightly at 03:00 UTC |
+| **Base de Datos** | Neo4j (gestionado) o Azure Cosmos DB API Gremlin |
+| **Actualizacion** | Incremental en cada push a `main` |
+| **Reconstruccion** | Reconstruccion completa nocturna a las 03:00 UTC |
 
-## Example Queries
+## Consultas de Ejemplo
 
-### Find all dependents of the Users Service
+### Encontrar todos los dependientes del Servicio de Usuarios
 
 ```cypher
 MATCH (s:Service {name: 'users-service'})<-[:DEPENDS_ON]-(dependent)
 RETURN dependent.name, dependent.type
 ```
 
-### Find all APIs consumed by the User Management System
+### Encontrar todas las APIs consumidas por el Sistema de Gestion de Usuarios
 
 ```cypher
 MATCH (sys:System {name: 'user-management-system'})<-[:PART_OF]-(c:Component)-[:CONSUMES_API]->(api:API)
 RETURN api.name, c.name
 ```
 
-### Find all events consumed by the Users Service and their sources
+### Encontrar todos los eventos consumidos por el Servicio de Usuarios y sus fuentes
 
 ```cypher
 MATCH (s:Service {name: 'users-service'})-[:SUBSCRIBES_TO]->(e:Event)<-[:PUBLISHES]-(publisher)
 RETURN e.name AS Event, publisher.name AS Publisher
 ```
 
-### Impact analysis: What breaks if the Auth Service goes down?
+### Analisis de impacto: Que se rompe si el Servicio de Autenticacion se cae?
 
 ```cypher
 MATCH (auth:Service {name: 'auth-service'})<-[:DEPENDS_ON]-(dependent:Service)
 OPTIONAL MATCH (dependent)-[:VALIDATES_WITH]->(auth)
 RETURN dependent.name, dependent.type,
-       CASE WHEN dependent.name = 'users-service' THEN 'JWT validation fails after JWKS cache expires (5 min TTL)' ELSE 'Dependency break' END AS Impact
+       CASE WHEN dependent.name = 'users-service' THEN 'La validacion JWT falla despues de que expira el cache JWKS (TTL de 5 min)' ELSE 'Rotura de dependencia' END AS Impact
 ```
 
-### RBAC — which roles can delete users?
+### RBAC -- que roles pueden eliminar usuarios?
 
 ```cypher
 MATCH (s:Service {name: 'users-service'})-[:ENFORCES_RBAC]->(r:Role)
@@ -129,7 +129,7 @@ MATCH (s)-[:PROVIDES_API]->(api:API)
 RETURN api.name, r.name AS Role, r.allowed_actions AS AllowedActions
 ```
 
-### Tenant isolation — which resources are scoped per tenant?
+### Aislamiento de inquilinos -- que recursos estan limitados por inquilino?
 
 ```cypher
 MATCH (s:Service {name: 'users-service'})-[:STORES_IN]->(res:Resource)
@@ -137,7 +137,7 @@ MATCH (res)-[:ISOLATES_TENANT]->(t:Tenant)
 RETURN res.name, t.name
 ```
 
-## Related Documents
+## Documentos Relacionados
 
 - [Sources of Truth](sources-of-truth.md)
 - [RAG](rag.md)

@@ -1,16 +1,16 @@
-# Dependency Inventory — Users Service
+# Inventario de Dependencias — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Dependency Graph Overview
+## Diagrama General de Dependencias
 
-The Users Service depends on the Auth Service for JWT validation and consumes events from the Auth Service. It maintains its own isolated PostgreSQL database and publishes user events for downstream consumers.
+El Users Service depende del Auth Service para la validación de JWT y consume eventos del Auth Service. Mantiene su propia base de datos PostgreSQL aislada y publica eventos de usuario para consumidores posteriores.
 
 ```mermaid
 graph TB
-    subgraph "Platform Services"
+    subgraph "Servicios de Plataforma"
         auth["Auth Service<br/>(auth-service)"]
         users["Users Service<br/>(users-service)"]
         gateway["API Gateway"]
@@ -18,8 +18,8 @@ graph TB
         notify["Notification Service"]
     end
 
-    subgraph "Azure Infrastructure"
-        pg_users["PostgreSQL 16<br/>Users DB (Isolated)"]
+    subgraph "Infraestructura Azure"
+        pg_users["PostgreSQL 16<br/>Users DB (Isolada)"]
         sb["Azure Service Bus<br/>Premium"]
         kv["Azure Key Vault"]
         graph_api["Microsoft Graph API"]
@@ -27,26 +27,26 @@ graph TB
         aks["Azure Kubernetes Service"]
     end
 
-    subgraph "External"
+    subgraph "Externo"
         entra_id["Microsoft Entra ID"]
     end
 
-    %% Dependency: Users depends on Auth for JWT validation
-    users -.->|"JWKS / JWT Validation"| auth
+    %% Dependencia: Users depende de Auth para validación JWT
+    users -.->|"JWKS / Validación JWT"| auth
     users -->|"Npgsql / TLS 1.3"| pg_users
     users -->|"Azure.Messaging.ServiceBus"| sb
     users -->|"Azure.Security.KeyVault"| kv
     users -->|"Microsoft Graph SDK"| graph_api
 
-    %% Event flows
-    auth -->|"auth-events (login, logout)"| sb
+    %% Flujos de eventos
+    auth -->|"eventos-auth (login, logout)"| sb
     sb -->|"user.created, user.updated, user.deleted"| users
-    sb -->|"user events"| audit
-    sb -->|"user events"| notify
+    sb -->|"eventos de usuario"| audit
+    sb -->|"eventos de usuario"| notify
 
-    %% Auth -> Users indirect dependency
+    %% Dependencia indirecta Auth -> Users
     gateway -->|"JWT Bearer Token"| users
-    auth -->|"JWKS endpoint"| gateway
+    auth -->|"endpoint JWKS"| gateway
 
     style users fill:#6BBF59,color:#fff
     style auth fill:#4A90D9,color:#fff
@@ -54,137 +54,137 @@ graph TB
     style graph_api fill:#0078D4,color:#fff
 ```
 
-### Users Service to Auth Service Dependency
+### Dependencia del Users Service al Auth Service
 
-The critical dependency of Users Service on Auth Service:
+La dependencia crítica del Users Service hacia el Auth Service:
 
-| Direction | Mechanism | Description |
+| Dirección | Mecanismo | Descripción |
 |---|---|---|
-| Users Service -> Auth Service | JWKS endpoint (`.well-known/jwks.json`) | Users Service fetches and caches Auth Service's public keys for local JWT signature verification. No direct synchronous HTTP call exists; the JWKS endpoint is polled periodically (cache TTL: 5 minutes). |
-| Users Service <- Auth Service | Events via Service Bus topic `auth-events` | Users Service consumes `user.login`, `user.logout`, and `token.revoked` events to update user session state and trigger profile actions. |
+| Users Service -> Auth Service | Endpoint JWKS (`.well-known/jwks.json`) | Users Service obtiene y almacena en caché las claves públicas del Auth Service para la verificación local de firmas JWT. No existe una llamada HTTP síncrona directa; el endpoint JWKS se consulta periódicamente (TTL de caché: 5 minutos). |
+| Users Service <- Auth Service | Eventos mediante tema de Service Bus `auth-events` | Users Service consume eventos `user.login`, `user.logout` y `token.revoked` para actualizar el estado de sesión del usuario y desencadenar acciones de perfil. |
 
-**Impact of Auth Service unavailability:** If the Auth Service is unavailable:
-- New JWKS keys cannot be fetched (cached keys continue to work for up to 5 minutes).
-- After cache expiry, JWT validation fails and all requests to Users Service are rejected.
-- Auth events are not received (users session state becomes stale).
-- User CRUD operations that don't require fresh token validation continue to work (cached JWKS).
+**Impacto de la indisponibilidad del Auth Service:** Si el Auth Service no está disponible:
+- No se pueden obtener nuevas claves JWKS (las claves en caché continúan funcionando hasta por 5 minutos).
+- Después de la expiración de la caché, la validación JWT falla y todas las solicitudes al Users Service son rechazadas.
+- No se reciben eventos de auth (el estado de sesión del usuario se vuelve obsoleto).
+- Las operaciones CRUD de usuario que no requieren validación de token fresco continúan funcionando (JWKS en caché).
 
 ---
 
-## 1. Runtime Dependencies
+## 1. Dependencias en Tiempo de Ejecución
 
-### 1.1 Users Database (PostgreSQL 16) — Isolated
+### 1.1 Base de Datos de Usuarios (PostgreSQL 16) — Aislada
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Service** | Azure Database for PostgreSQL — Flexible Server |
-| **SKU** | General Purpose, 4 vCores, 32 GB RAM, 512 GB SSD |
-| **Version** | 16.x |
-| **Purpose** | Persistent storage for user profiles, tenant data, RBAC assignments, soft-delete tracking |
-| **Isolation** | This database is EXCLUSIVE to the Users Service. No other service has direct access. Auth Service uses a separate database instance. |
-| **Connection** | Npgsql 9.x, TLS 1.3, SCRAM-SHA-256 authentication |
-| **Pool** | Min 10, Max 50 connections per instance |
-| **High Availability** | Zone-redundant standby (West Europe), read replica in North Europe |
-| **Backup** | 35-day point-in-time restore, geo-redundant |
-| **Degraded Mode** | If database is unreachable, all user operations fail. Read-only operations may use the read replica if configured. |
+| **Servicio** | Azure Database for PostgreSQL — Flexible Server |
+| **SKU** | Propósito General, 4 vCores, 32 GB RAM, 512 GB SSD |
+| **Versión** | 16.x |
+| **Propósito** | Almacenamiento persistente para perfiles de usuario, datos de inquilino, asignaciones RBAC, seguimiento de soft-delete |
+| **Aislamiento** | Esta base de datos es EXCLUSIVA del Users Service. Ningún otro servicio tiene acceso directo. Auth Service utiliza una instancia de base de datos separada. |
+| **Conexión** | Npgsql 9.x, TLS 1.3, autenticación SCRAM-SHA-256 |
+| **Pool** | Mín 10, Máx 50 conexiones por instancia |
+| **Alta Disponibilidad** | Standby redundante por zona (West Europe), réplica de lectura en North Europe |
+| **Respaldo** | Restauración puntual de 35 días, geo-redundante |
+| **Modo Degradado** | Si la base de datos no está disponible, todas las operaciones de usuario fallan. Las operaciones de solo lectura pueden usar la réplica de lectura si está configurada. |
 
 ### 1.2 Azure Service Bus
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Service** | Azure Service Bus Premium |
-| **Topics consumed** | `auth-events` (subscription: `users-service-auth-events`) |
-| **Topics published** | `user-events` (for consumers: audit, notification services) |
-| **Events consumed** | `user.login`, `user.logout`, `token.revoked` |
-| **Events published** | `user.created`, `user.updated`, `user.deleted`, `user.restored` |
-| **Retention** | 7 days |
-| **Dead-Letter** | After 10 failed delivery attempts, events moved to DLQ |
-| **Degraded Mode** | If Service Bus is unavailable, consumed events are queued by Azure (up to 7 days). Published events are dropped with a warning. |
+| **Servicio** | Azure Service Bus Premium |
+| **Temas consumidos** | `auth-events` (suscripción: `users-service-auth-events`) |
+| **Temas publicados** | `user-events` (para consumidores: servicios de auditoría, notificación) |
+| **Eventos consumidos** | `user.login`, `user.logout`, `token.revoked` |
+| **Eventos publicados** | `user.created`, `user.updated`, `user.deleted`, `user.restored` |
+| **Retención** | 7 días |
+| **Dead-Letter** | Después de 10 intentos de entrega fallidos, los eventos se mueven a DLQ |
+| **Modo Degradado** | Si Service Bus no está disponible, los eventos consumidos se ponen en cola por Azure (hasta 7 días). Los eventos publicados se descartan con una advertencia. |
 
 ### 1.3 Microsoft Graph API
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Service** | Microsoft Graph API v1.0 |
-| **Purpose** | Profile enrichment: fetch user photo, department, manager, and organization data from Entra ID |
-| **Permissions** | `User.Read.All` (read profiles), `User.ReadWrite.All` (update profiles) |
-| **Authentication** | OAuth 2.0 client credentials grant with client secret (stored in Key Vault) |
-| **Rate Limits** | Microsoft Graph: 10,000 requests per 10 minutes per tenant |
-| **Cache** | Graph API responses cached for 1 hour to reduce API calls |
-| **Degraded Mode** | If Graph API is unavailable, profile enrichment is skipped. User profiles still served with locally-stored data. |
+| **Servicio** | Microsoft Graph API v1.0 |
+| **Propósito** | Enriquecimiento de perfil: obtener foto de usuario, departamento, gerente y datos de organización desde Entra ID |
+| **Permisos** | `User.Read.All` (leer perfiles), `User.ReadWrite.All` (actualizar perfiles) |
+| **Autenticación** | Concesión de credenciales de cliente OAuth 2.0 con secreto de cliente (almacenado en Key Vault) |
+| **Límites de tasa** | Microsoft Graph: 10,000 solicitudes por cada 10 minutos por inquilino |
+| **Caché** | Respuestas de Graph API almacenadas en caché por 1 hora para reducir llamadas a la API |
+| **Modo Degradado** | Si Graph API no está disponible, el enriquecimiento de perfil se omite. Los perfiles de usuario aún se sirven con datos almacenados localmente. |
 
 ### 1.4 Azure Key Vault
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Purpose** | Stores database connection string, Service Bus connection string, Graph API client secret |
-| **Access** | Azure Managed Identity |
-| **Degraded Mode** | Cached secrets continue to work; service cannot start if Key Vault is unreachable at startup |
+| **Propósito** | Almacena cadena de conexión de base de datos, cadena de conexión de Service Bus, secreto de cliente de Graph API |
+| **Acceso** | Azure Managed Identity |
+| **Modo Degradado** | Los secretos en caché continúan funcionando; el servicio no puede iniciar si Key Vault no está accesible al inicio |
 
-### 1.5 Auth Service (Indirect Dependency)
+### 1.5 Auth Service (Dependencia Indirecta)
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Purpose** | JWT token validation via JWKS endpoint |
-| **Connection** | HTTP GET to `https://auth.example.com/.well-known/jwks.json` (polled every 5 minutes) |
-| **Caching** | JWKS document cached in memory with 5-minute TTL |
-| **Degraded Mode** | Cached JWKS keys work for up to 5 minutes. After cache expiry, all requests fail authentication. |
-| **Fallback** | None — the Auth Service is the single identity source |
+| **Propósito** | Validación de token JWT mediante endpoint JWKS |
+| **Conexión** | HTTP GET a `https://auth.example.com/.well-known/jwks.json` (consultado cada 5 minutos) |
+| **Caché** | Documento JWKS almacenado en caché en memoria con TTL de 5 minutos |
+| **Modo Degradado** | Las claves JWKS en caché funcionan hasta por 5 minutos. Después de la expiración de la caché, todas las solicitudes fallan en autenticación. |
+| **Alternativa** | Ninguna — el Auth Service es la única fuente de identidad |
 
 ---
 
-## 2. Build Dependencies (NuGet Packages)
+## 2. Dependencias de Compilación (Paquetes NuGet)
 
-### 2.1 Runtime NuGet Packages
+### 2.1 Paquetes NuGet en Tiempo de Ejecución
 
-| Package | Version | Purpose |
+| Paquete | Versión | Propósito |
 |---|---|---|
-| Npgsql | 9.* | PostgreSQL data provider |
-| Npgsql.EntityFrameworkCore.PostgreSQL | 9.* | EF Core provider for PostgreSQL |
-| Microsoft.EntityFrameworkCore | 10.* | ORM for data access |
-| Azure.Messaging.ServiceBus | 7.* | Event publishing and consumption |
-| Azure.Security.KeyVault.Secrets | 4.* | Secret retrieval |
-| Azure.Identity | 1.* | Managed Identity authentication |
-| Microsoft.Graph | 5.* | Microsoft Graph API client |
-| Microsoft.Graph.Core | 3.* | Graph API core HTTP infrastructure |
-| FluentValidation | 11.* | Request DTO validation |
-| FluentValidation.DependencyInjectionExtensions | 11.* | DI integration |
-| Serilog.AspNetCore | 8.* | Structured logging |
-| OpenTelemetry.Exporter.Prometheus.AspNetCore | 1.* | Prometheus metrics |
-| OpenTelemetry.Extensions.Hosting | 1.* | OTEL integration |
+| Npgsql | 9.* | Proveedor de datos PostgreSQL |
+| Npgsql.EntityFrameworkCore.PostgreSQL | 9.* | Proveedor EF Core para PostgreSQL |
+| Microsoft.EntityFrameworkCore | 10.* | ORM para acceso a datos |
+| Azure.Messaging.ServiceBus | 7.* | Publicación y consumo de eventos |
+| Azure.Security.KeyVault.Secrets | 4.* | Recuperación de secretos |
+| Azure.Identity | 1.* | Autenticación Managed Identity |
+| Microsoft.Graph | 5.* | Cliente de Microsoft Graph API |
+| Microsoft.Graph.Core | 3.* | Infraestructura HTTP base de Graph API |
+| FluentValidation | 11.* | Validación de DTOs de solicitud |
+| FluentValidation.DependencyInjectionExtensions | 11.* | Integración con DI |
+| Serilog.AspNetCore | 8.* | Logs estructurados |
+| OpenTelemetry.Exporter.Prometheus.AspNetCore | 1.* | Métricas Prometheus |
+| OpenTelemetry.Extensions.Hosting | 1.* | Integración OTEL |
 
-### 2.2 Test Packages
+### 2.2 Paquetes de Prueba
 
-| Package | Purpose |
+| Paquete | Propósito |
 |---|---|
-| xunit | Test framework |
-| NSubstitute | Mocking |
-| FluentAssertions | Readable assertions |
-| Testcontainers.PostgreSql | Ephemeral PostgreSQL for integration tests |
-| WireMock.Net | HTTP endpoint mocking (for JWKS and Graph API) |
+| xunit | Framework de pruebas |
+| NSubstitute | Simulación (mocking) |
+| FluentAssertions | Aserciones legibles |
+| Testcontainers.PostgreSql | PostgreSQL efímero para pruebas de integración |
+| WireMock.Net | Simulación de endpoints HTTP (para JWKS y Graph API) |
 
 ---
 
-## 3. Deployment Dependencies
+## 3. Dependencias de Despliegue
 
-| Resource | Configuration |
+| Recurso | Configuración |
 |---|---|
-| AKS | Standard_D4s_v5 nodes, 3 zones, 4 replicas per zone |
+| AKS | Nodos Standard_D4s_v5, 3 zonas, 4 réplicas por zona |
 | ACR | `acrplatform.azurecr.io/users-service:{tag}` |
-| Helm | Deployment: 4 replicas, requests 500m CPU / 512 MiB, limits 2000m CPU / 2 GiB |
-| HPA | Target CPU 70%, min 4, max 10 per zone |
-| PDB | Min available: 2 per zone |
+| Helm | Despliegue: 4 réplicas, solicitudes 500m CPU / 512 MiB, límites 2000m CPU / 2 GiB |
+| HPA | CPU objetivo 70%, mínimo 4, máximo 10 por zona |
+| PDB | Mínimo disponible: 2 por zona |
 
 ---
 
-## 4. Dependency Summary
+## 4. Resumen de Dependencias
 
-| Dependency | Type | Critical? | Degraded Mode |
+| Dependencia | Tipo | ¿Crítica? | Modo Degradado |
 |---|---|---|---|
-| PostgreSQL (Users DB) | Runtime | Yes | No — all operations blocked |
-| Auth Service (JWKS) | Runtime (indirect) | Yes | 5-minute cached JWKS grace window |
-| Service Bus | Runtime | No | Events queued (consume) or dropped (publish) |
-| Microsoft Graph API | Runtime | No | Profile enrichment skipped |
-| Azure Key Vault | Runtime | Startup-critical | Cached secrets |
-| NuGet packages | Build | — | Pinned versions with lock file |
-| AKS / ACR | Deployment | — | Blue/Green deployment |
+| PostgreSQL (Users DB) | Tiempo de ejecución | Sí | No — todas las operaciones bloqueadas |
+| Auth Service (JWKS) | Tiempo de ejecución (indirecta) | Sí | Ventana de gracia de 5 minutos con JWKS en caché |
+| Service Bus | Tiempo de ejecución | No | Eventos en cola (consumo) o descartados (publicación) |
+| Microsoft Graph API | Tiempo de ejecución | No | Enriquecimiento de perfil omitido |
+| Azure Key Vault | Tiempo de ejecución | Crítico al inicio | Secretos en caché |
+| Paquetes NuGet | Compilación | — | Versiones fijadas con archivo de bloqueo |
+| AKS / ACR | Despliegue | — | Despliegue Blue/Green |

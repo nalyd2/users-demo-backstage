@@ -1,7 +1,7 @@
 # Users Service (`users-service`)
 
-> **Part of the Internal Developer Platform (IDP)** — User Management domain.
-> Registered in Backstage via `catalog-info.yaml`. Documentation rendered with TechDocs.
+> **Parte de la Plataforma Interna de Desarrollo (IDP)** — Dominio de Gestion de Usuarios.
+> Registrado en Backstage via `catalog-info.yaml`. Documentacion renderizada con TechDocs.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
@@ -10,142 +10,142 @@
 
 ---
 
-## 📖 Overview
+## 📖 Descripcion General
 
-The **Users Service** (`users-service`) manages the complete user lifecycle for the Internal Developer Platform (IDP). It provides CRUD operations on user profiles, integrates with the [Authentication Service](https://backstage.internal/platform/component/auth-service) for JWT validation, and consumes authentication events to maintain an up‑to‑date view of user activity.
+El **Users Service** (`users-service`) gestiona el ciclo de vida completo de los usuarios para la Plataforma Interna de Desarrollo (IDP). Proporciona operaciones CRUD sobre perfiles de usuario, se integra con el [Authentication Service](https://backstage.internal/platform/component/auth-service) para la validacion de JWT, y consume eventos de autenticacion para mantener una vision actualizada de la actividad del usuario.
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **System** | `user-management-system` |
-| **Domain** | `identity` |
-| **Owner** | Platform Engineering Team |
-| **Lifecycle** | `production` |
-| **Technology** | .NET 10, ASP.NET Core Minimal APIs |
-| **Authentication** | JWT validation via Auth Service |
-| **Database** | PostgreSQL (Users DB) |
+| **Sistema** | `user-management-system` |
+| **Dominio** | `identity` |
+| **Propietario** | Platform Engineering Team |
+| **Ciclo de Vida** | `production` |
+| **Tecnologia** | .NET 10, ASP.NET Core Minimal APIs |
+| **Autenticacion** | Validacion JWT via Auth Service |
+| **Base de Datos** | PostgreSQL (Users DB) |
 
 ---
 
-## 🧭 Quick Links
+## 🧭 Enlaces Rapidos
 
-| Resource | Location |
+| Recurso | Ubicacion |
 |---|---|
-| 📘 **TechDocs** (rendered in Backstage) | [`docs/index.md`](./docs/index.md) |
-| 🗂️ **Catalog definition** | [`catalog-info.yaml`](./catalog-info.yaml) |
-| 🔌 **OpenAPI 3.1 spec** | [`openapi.yaml`](./openapi.yaml) |
-| 📐 **Architecture docs** | [`docs/architecture/`](./docs/architecture/) |
+| 📘 **TechDocs** (renderizado en Backstage) | [`docs/index.md`](./docs/index.md) |
+| 🗂️ **Definicion del Catalogo** | [`catalog-info.yaml`](./catalog-info.yaml) |
+| 🔌 **Especificacion OpenAPI 3.1** | [`openapi.yaml`](./openapi.yaml) |
+| 📐 **Documentos de Arquitectura** | [`docs/architecture/`](./docs/architecture/) |
 | 📋 **Runbooks** | [`docs/runbooks/`](./docs/runbooks/) |
 | 🔧 **Onboarding** | [`docs/onboarding/`](./docs/onboarding/) |
 | 📜 **ADRs** | [`docs/adr/`](./docs/adr/) |
-| 🧠 **AI / RAG preparation** | [`knowledge/`](./knowledge/) |
-| 📦 **Generated artifacts** | [`generated/`](./generated/) |
-| 🚀 **CI/CD pipeline** | [`azure-pipelines.yml`](./azure-pipelines.yml) |
+| 🧠 **Preparacion IA / RAG** | [`knowledge/`](./knowledge/) |
+| 📦 **Artefactos Generados** | [`generated/`](./generated/) |
+| 🚀 **Pipeline CI/CD** | [`azure-pipelines.yml`](./azure-pipelines.yml) |
 
 ---
 
 ## 👥 Endpoints
 
-| Method | Path | Description |
+| Metodo | Ruta | Descripcion |
 |---|---|---|
-| `GET`    | `/api/users`        | List all users (paginated, filterable) |
-| `GET`    | `/api/users/{id}`   | Get a single user by ID |
-| `POST`   | `/api/users`        | Create a new user profile |
-| `PUT`    | `/api/users/{id}`   | Update an existing user profile |
-| `DELETE` | `/api/users/{id}`   | Soft-delete a user profile |
-| `GET`    | `/api/health`       | Liveness and readiness probe |
+| `GET`    | `/api/users`        | Listar todos los usuarios (paginado, filtrable) |
+| `GET`    | `/api/users/{id}`   | Obtener un usuario por ID |
+| `POST`   | `/api/users`        | Crear un nuevo perfil de usuario |
+| `PUT`    | `/api/users/{id}`   | Actualizar un perfil de usuario existente |
+| `DELETE` | `/api/users/{id}`   | Eliminacion logica de un perfil de usuario |
+| `GET`    | `/api/health`       | Sonda de actividad y disponibilidad |
 
-All mutating endpoints require a valid JWT issued by the Authentication Service.
+Todos los endpoints de modificacion requieren un JWT valido emitido por el Authentication Service.
 
-Full API reference: [`docs/api/users-api.md`](./docs/api/users-api.md)
+Referencia completa de la API: [`docs/api/users-api.md`](./docs/api/users-api.md)
 
 ---
 
-## 🔗 Platform Relationships
+## 🔗 Relaciones de la Plataforma
 
 ```
                       DependsOn
 users-service ─────────────────────► auth-service
-                           JWT validation via POST /api/auth/refresh
+                           Validacion JWT via POST /api/auth/refresh
 
                       ConsumesApi
 users-service ─────────────────────► auth-api
 
                       Subscribes
 users-service ─────────────────────► auth-service
-               user.login, user.logout events
+               Eventos user.login, user.logout
 ```
 
-See [`docs/decisions/dependencies.md`](./docs/decisions/dependencies.md) for the full dependency map.
+Consulte [`docs/decisions/dependencies.md`](./docs/decisions/dependencies.md) para ver el mapa completo de dependencias.
 
 ---
 
-## 🔑 Authentication Flow
+## 🔑 Flujo de Autenticacion
 
 ```
-Client                     Users Service              Auth Service
+Cliente                     Users Service              Auth Service
   │                              │                          │
   │  GET /api/users              │                          │
   │  (Authorization: Bearer JWT) │                          │
   │─────────────────────────────►│                          │
   │                              │                          │
-  │                              │ Validate JWT             │
-  │                              │ (local RS256 public key) │
+  │                              │ Validar JWT              │
+  │                              │ (clave publica RS256 local) │
   │                              │                          │
-  │                              │ (if JWT expired)         │
+  │                              │ (si JWT expiro)          │
   │                              │ POST /api/auth/refresh   │
   │                              │─────────────────────────►│
   │                              │◄─────────────────────────│
   │                              │                          │
   │◄─────────────────────────────│                          │
-  │  200 OK + [users]            │                          │
+  │  200 OK + [usuarios]         │                          │
 ```
 
 ---
 
-## 🚀 Getting Started (Local)
+## 🚀 Primeros Pasos (Local)
 
 ```bash
-# Prerequisites: .NET 10 SDK
+# Prerrequisitos: SDK .NET 10
 dotnet restore src/UsersService/UsersService.csproj
 dotnet run --project src/UsersService/UsersService.csproj
 
-# The service listens on https://localhost:7201
+# El servicio escucha en https://localhost:7201
 # Swagger UI: https://localhost:7201/swagger
 ```
 
-Detailed instructions: [`docs/onboarding/local-development.md`](./docs/onboarding/local-development.md)
+Instrucciones detalladas: [`docs/onboarding/local-development.md`](./docs/onboarding/local-development.md)
 
 ---
 
-## 🧱 Repository Structure
+## 🧱 Estructura del Repositorio
 
 ```
 .
-├── src/                    # Application source code (.NET 10)
-├── tests/                  # Unit & integration tests
-├── docs/                   # All documentation (TechDocs)
-├── generated/              # CI/CD-generated artifacts
-├── knowledge/              # AI/RAG indexing preparation
-├── catalog-info.yaml       # Backstage entity registration
-├── mkdocs.yml              # TechDocs / MkDocs configuration
-├── openapi.yaml            # OpenAPI 3.1 specification
-├── azure-pipelines.yml     # CI/CD pipeline (Azure DevOps)
-├── Dockerfile              # Container image definition
-└── .editorconfig           # Shared code-style conventions
+├── src/                    # Codigo fuente de la aplicacion (.NET 10)
+├── tests/                  # Pruebas unitarias y de integracion
+├── docs/                   # Toda la documentacion (TechDocs)
+├── generated/              # Artefactos generados por CI/CD
+├── knowledge/              # Preparacion para indexacion IA/RAG
+├── catalog-info.yaml       # Registro de entidad en Backstage
+├── mkdocs.yml              # Configuracion de TechDocs / MkDocs
+├── openapi.yaml            # Especificacion OpenAPI 3.1
+├── azure-pipelines.yml     # Pipeline CI/CD (Azure DevOps)
+├── Dockerfile              # Definicion de imagen de contenedor
+└── .editorconfig           # Convenciones de estilo de codigo compartidas
 ```
 
 ---
 
-## 📊 Platform Context
+## 📊 Contexto de la Plataforma
 
-This service is one component of a larger enterprise platform. The documentation in this repository assumes the existence of other services — particularly the Authentication Service — infrastructure, and tools that may not be present in this standalone reference implementation. For the full platform architecture, see [`docs/architecture/context.md`](./docs/architecture/context.md).
-
----
-
-## 📄 License
-
-MIT — see [LICENSE](./LICENSE).
+Este servicio es un componente de una plataforma empresarial mas grande. La documentacion en este repositorio asume la existencia de otros servicios — particularmente el Authentication Service — infraestructura y herramientas que pueden no estar presentes en esta implementacion de referencia independiente. Para la arquitectura completa de la plataforma, consulte [`docs/architecture/context.md`](./docs/architecture/context.md).
 
 ---
 
-_Maintained by the Platform Engineering Team. For questions, open an issue or contact `#platform-eng` on Slack._
+## 📄 Licencia
+
+MIT — consulte [LICENSE](./LICENSE).
+
+---
+
+_Mantenido por el Platform Engineering Team. Para preguntas, abra un issue o contacte a `#platform-eng` en Slack._

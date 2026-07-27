@@ -1,118 +1,118 @@
-# Container View
+# Vista de Contenedores
 
-## Scope
+## Alcance
 
-This document describes the **runtime containers** that compose the Users Service and its supporting infrastructure (C4 Model Level 2).
+Este documento describe los **contenedores en tiempo de ejecución** que componen el Users Service y su infraestructura de soporte (Modelo C4 Nivel 2).
 
-## C4 Model — Level 2: Container Diagram
+## Modelo C4 — Nivel 2: Diagrama de Contenedores
 
 ```mermaid
 C4Container
     title Container View — Users Service
 
-    Person(operator, "Platform Operator", "Administrator")
+    Person(operator, "Platform Operator", "Administrador")
 
     System_Boundary(users_system, "Users Service System") {
-        Container(web_api, "Users Web API", ".NET 10 / ASP.NET Core", "Serves REST endpoints for<br/>user CRUD operations.<br/>Validates JWT on every request.")
-        Container(event_consumer, "Event Consumer", ".NET 10 / Background Service", "Subscribes to auth events.<br/>Updates user activity state.<br/>Processes login/logout events.")
-        Container(sync_worker, "Profile Sync Worker", ".NET 10 / Background Service", "Nightly reconciliation with<br/>Azure AD / Entra ID via<br/>Microsoft Graph API.")
+        Container(web_api, "Users Web API", ".NET 10 / ASP.NET Core", "Sirve endpoints REST para<br/>operaciones CRUD de usuarios.<br/>Valida JWT en cada solicitud.")
+        Container(event_consumer, "Event Consumer", ".NET 10 / Background Service", "Se suscribe a eventos de autenticación.<br/>Actualiza el estado de actividad del usuario.<br/>Procesa eventos de inicio/cierre de sesión.")
+        Container(sync_worker, "Profile Sync Worker", ".NET 10 / Background Service", "Reconciliación nocturna con<br/>Azure AD / Entra ID mediante<br/>Microsoft Graph API.")
 
-        ContainerDb(postgres, "Users Database", "PostgreSQL 16", "Persistent storage for user<br/>profiles, roles, tenant config,<br/>and audit records.")
+        ContainerDb(postgres, "Users Database", "PostgreSQL 16", "Almacenamiento persistente para perfiles<br/>de usuario, roles, configuración de tenant,<br/>y registros de auditoría.")
     }
 
-    System_Ext(auth_service, "Authentication Service", "JWT validation & issuance")
-    System_Ext(gateway, "API Gateway", "Edge proxy")
-    System_Ext(service_bus, "Azure Service Bus", "Message broker")
-    System_Ext(key_vault, "Azure Key Vault", "Secrets")
-    System_Ext(graph_api, "Microsoft Graph API", "Entra ID data enrichment")
-    System_Ext(notification_svc, "Notification Service", "Email/push notifications")
-    System_Ext(prometheus, "Prometheus", "Metrics scraper")
-    System_Ext(elk, "Elastic Stack", "Log aggregation")
+    System_Ext(auth_service, "Authentication Service", "Validación y emisión de JWT")
+    System_Ext(gateway, "API Gateway", "Proxy de borde")
+    System_Ext(service_bus, "Azure Service Bus", "Broker de mensajes")
+    System_Ext(key_vault, "Azure Key Vault", "Secretos")
+    System_Ext(graph_api, "Microsoft Graph API", "Enriquecimiento de datos de Entra ID")
+    System_Ext(notification_svc, "Notification Service", "Notificaciones por correo/push")
+    System_Ext(prometheus, "Prometheus", "Recolector de métricas")
+    System_Ext(elk, "Elastic Stack", "Agregación de logs")
 
     Rel(operator, gateway, "HTTPS", "JWT Bearer")
-    Rel(gateway, web_api, "Routes to", "mTLS / HTTPS")
-    Rel(gateway, auth_service, "Validates JWT", "gRPC")
+    Rel(gateway, web_api, "Enruta a", "mTLS / HTTPS")
+    Rel(gateway, auth_service, "Valida JWT", "gRPC")
 
-    Rel(web_api, auth_service, "Validates JWT at service level", "gRPC / mTLS")
-    Rel(web_api, key_vault, "Reads DB credentials", "Managed Identity")
-    Rel(web_api, postgres, "CRUD user data", "Npgsql / TLS 1.3")
-    Rel(web_api, service_bus, "Publishes user events", "AMQP 1.0")
-    Rel(web_api, notification_svc, "Triggers notifications", "gRPC / mTLS")
-    Rel(web_api, prometheus, "Exposes metrics", "HTTP scrape")
-    Rel(web_api, elk, "Streams logs", "Filebeat")
+    Rel(web_api, auth_service, "Valida JWT a nivel de servicio", "gRPC / mTLS")
+    Rel(web_api, key_vault, "Lee credenciales de BD", "Managed Identity")
+    Rel(web_api, postgres, "CRUD de datos de usuario", "Npgsql / TLS 1.3")
+    Rel(web_api, service_bus, "Publica eventos de usuario", "AMQP 1.0")
+    Rel(web_api, notification_svc, "Dispara notificaciones", "gRPC / mTLS")
+    Rel(web_api, prometheus, "Expone métricas", "HTTP scrape")
+    Rel(web_api, elk, "Transmite logs", "Filebeat")
 
-    Rel(event_consumer, service_bus, "Subscribes to auth events", "AMQP 1.0")
-    Rel(event_consumer, postgres, "Updates user activity state", "Npgsql / TLS 1.3")
-    Rel(event_consumer, prometheus, "Exposes metrics", "HTTP scrape")
+    Rel(event_consumer, service_bus, "Se suscribe a eventos de autenticación", "AMQP 1.0")
+    Rel(event_consumer, postgres, "Actualiza estado de actividad del usuario", "Npgsql / TLS 1.3")
+    Rel(event_consumer, prometheus, "Expone métricas", "HTTP scrape")
 
-    Rel(sync_worker, graph_api, "Syncs profiles nightly", "REST / OAuth2")
-    Rel(sync_worker, postgres, "Updates enriched profiles", "Npgsql / TLS 1.3")
+    Rel(sync_worker, graph_api, "Sincroniza perfiles cada noche", "REST / OAuth2")
+    Rel(sync_worker, postgres, "Actualiza perfiles enriquecidos", "Npgsql / TLS 1.3")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="2")
 ```
 
-## Container Descriptions
+## Descripciones de Contenedores
 
 ### 1. Users Web API (`web_api`)
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Technology** | .NET 10, ASP.NET Core Minimal APIs |
-| **Port** | 7201 (HTTP), 7203 (HTTPS) |
-| **Responsibilities** | User CRUD operations, JWT validation at service level, user event publication |
-| **Authentication** | JWT Bearer token, validated via Auth Service gRPC |
-| **Authorization** | Role-based (RBAC): `admin` (full CRUD), `operator` (read+update), `user` (read self only) |
-| **Pagination** | Cursor-based pagination (`pageSize` + `continuationToken`) |
-| **Scaling** | Horizontal. Target: 4-8 instances |
+| **Tecnología** | .NET 10, ASP.NET Core Minimal APIs |
+| **Puerto** | 7201 (HTTP), 7203 (HTTPS) |
+| **Responsabilidades** | Operaciones CRUD de usuarios, validación JWT a nivel de servicio, publicación de eventos de usuario |
+| **Autenticación** | Token JWT Bearer, validado mediante gRPC del Auth Service |
+| **Autorización** | Basada en roles (RBAC): `admin` (CRUD completo), `operator` (lectura+actualización), `user` (solo lectura propia) |
+| **Paginación** | Paginación basada en cursor (`pageSize` + `continuationToken`) |
+| **Escalado** | Horizontal. Objetivo: 4-8 instancias |
 
 **Endpoints:**
 
-| Method | Path | Auth | Roles |
+| Método | Ruta | Autenticación | Roles |
 |---|---|---|---|
 | `GET` | `/api/users` | JWT | admin, operator |
-| `GET` | `/api/users/{id}` | JWT | admin, operator, user (self only) |
+| `GET` | `/api/users/{id}` | JWT | admin, operator, user (solo propio) |
 | `POST` | `/api/users` | JWT | admin |
-| `PUT` | `/api/users/{id}` | JWT | admin, operator, user (self only, limited fields) |
+| `PUT` | `/api/users/{id}` | JWT | admin, operator, user (solo propio, campos limitados) |
 | `DELETE` | `/api/users/{id}` | JWT | admin |
-| `GET` | `/api/health` | None | — |
+| `GET` | `/api/health` | Ninguno | — |
 
 ### 2. Event Consumer (`event_consumer`)
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Technology** | .NET 10, `Azure.Messaging.ServiceBus` processor |
-| **Concurrency** | Max 10 concurrent message handlers per instance |
-| **Responsibilities** | Subscribe to `auth-events` topic; process `user.login`, `user.logout`, `token.revoked` events; update user activity timestamps |
-| **Error Handling** | Dead-letter after 10 delivery attempts; exponential backoff (10s → 5 min max) |
+| **Tecnología** | .NET 10, procesador `Azure.Messaging.ServiceBus` |
+| **Concurrencia** | Máx. 10 manejadores de mensajes concurrentes por instancia |
+| **Responsabilidades** | Suscribirse al tópico `auth-events`; procesar eventos `user.login`, `user.logout`, `token.revoked`; actualizar marcas de tiempo de actividad del usuario |
+| **Manejo de Errores** | Dead-letter después de 10 intentos de entrega; retroceso exponencial (10s → 5 min máximo) |
 
-**Processed Events:**
+**Eventos Procesados:**
 
-| Event | Action | Idempotency Key |
+| Evento | Acción | Clave de Idempotencia |
 |---|---|---|
-| `user.login` | `UPDATE users SET last_login_at = @timestamp WHERE id = @userId` | `eventId` (deduplication table) |
+| `user.login` | `UPDATE users SET last_login_at = @timestamp WHERE id = @userId` | `eventId` (tabla de deduplicación) |
 | `user.logout` | `UPDATE users SET last_logout_at = @timestamp WHERE id = @userId` | `eventId` |
 | `token.revoked` | `INSERT INTO token_revocations (user_id, event_id, revoked_at)` | `eventId` |
 
 ### 3. Profile Sync Worker (`sync_worker`)
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Technology** | .NET 10, `BackgroundService` |
-| **Schedule** | Nightly at 02:00 UTC |
-| **Responsibilities** | Sync user profiles with Azure AD / Entra ID via Microsoft Graph API; enrich platform profiles with corporate data (department, title, manager); detect and flag orphaned accounts (in AD but not in platform, and vice versa) |
-| **Batch Size** | 100 users per Graph API request |
-| **Dry Run** | `--dry-run` flag for preview mode |
+| **Tecnología** | .NET 10, `BackgroundService` |
+| **Programación** | Cada noche a las 02:00 UTC |
+| **Responsabilidades** | Sincronizar perfiles de usuario con Azure AD / Entra ID mediante Microsoft Graph API; enriquecer perfiles de la plataforma con datos corporativos (departamento, cargo, gerente); detectar y marcar cuentas huérfanas (en AD pero no en la plataforma, y viceversa) |
+| **Tamaño de Lote** | 100 usuarios por solicitud a Graph API |
+| **Simulación** | Bandera `--dry-run` para modo de previsualización |
 
 ### 4. Users Database (`postgres`)
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Technology** | PostgreSQL 16 (Azure Database for PostgreSQL — Flexible Server) |
-| **SKU** | General Purpose, 4 vCores, 16 GB RAM, 256 GB storage |
-| **HA** | Same-zone standby, automatic failover |
-| **Encryption** | At rest (AES-256) + in transit (TLS 1.3) |
+| **Tecnología** | PostgreSQL 16 (Azure Database for PostgreSQL — Flexible Server) |
+| **SKU** | Propósito General, 4 vCores, 16 GB RAM, 256 GB almacenamiento |
+| **HA** | Réplica en la misma zona, conmutación automática por error |
+| **Cifrado** | En reposo (AES-256) + en tránsito (TLS 1.3) |
 
-**Schema (simplified):**
+**Esquema (simplificado):**
 
 ```sql
 CREATE TABLE users (
@@ -148,9 +148,9 @@ CREATE TABLE audit_log (
 );
 ```
 
-## Inter-Container Communication Matrix
+## Matriz de Comunicación entre Contenedores
 
-| From | To | Protocol | Auth | Latency Target |
+| Desde | Hacia | Protocolo | Autenticación | Objetivo de Latencia |
 |---|---|---|---|---|
 | API Gateway | Web API | HTTPS | mTLS | p99 < 50ms |
 | Web API | Auth Service | gRPC | mTLS | p99 < 10ms |
@@ -158,12 +158,12 @@ CREATE TABLE audit_log (
 | Web API | Service Bus | AMQP | SAS | p99 < 100ms |
 | Web API | Key Vault | HTTPS | Managed Identity | p99 < 50ms |
 | Web API | Notification Service | gRPC | mTLS | p99 < 100ms |
-| Event Consumer | Service Bus | AMQP | SAS | — (async) |
+| Event Consumer | Service Bus | AMQP | SAS | — (asíncrono) |
 | Event Consumer | PostgreSQL | Npgsql | SCRAM | p99 < 5ms |
 | Sync Worker | Graph API | REST | OAuth2 | p99 < 2000ms |
 
-## Related Documents
+## Documentos Relacionados
 
-- [Component View](components.md) — internal structure of each container
-- [Deployment View](deployment-view.md) — deployment topology
-- [Technology Stack](technology-stack.md)
+- [Vista de Componentes](components.md) — estructura interna de cada contenedor
+- [Vista de Despliegue](deployment-view.md) — topología de despliegue
+- [Stack Tecnológico](technology-stack.md)

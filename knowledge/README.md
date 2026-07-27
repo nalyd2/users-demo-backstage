@@ -1,50 +1,50 @@
-# Knowledge Base Preparation for AI / RAG
+# Preparacion de Base de Conocimiento para IA / RAG
 
-## Purpose
+## Proposito
 
-This directory defines the **document architecture** for AI-powered features that will consume the Users Service documentation — specifically Retrieval-Augmented Generation (RAG), knowledge graphs, and semantic search. It does **not** contain AI code or models. It is the specification that an AI/ML team would use to index this repository's documentation.
+Este directorio define la **arquitectura de documentos** para las funcionalidades impulsadas por IA que consumiran la documentacion del Servicio de Usuarios -- especificamente Generacion Aumentada por Recuperacion (RAG), grafos de conocimiento y busqueda semantica. No contiene codigo ni modelos de IA. Es la especificacion que un equipo de IA/ML utilizaria para indexar la documentacion de este repositorio.
 
-## Guiding Principle
+## Principio Rector
 
-> **The documentation IS the source of truth.** The AI pipeline should index exactly what a human reads — nothing less, nothing fabricated.
+> **La documentacion ES la fuente de verdad.** El pipeline de IA debe indexar exactamente lo que un humano lee -- nada menos, nada inventado.
 
-## Documents
+## Documentos
 
-| Document | Description |
+| Documento | Descripcion |
 |---|---|
-| [indexing-strategy.md](indexing-strategy.md) | What to index, what to exclude, and why |
-| [chunking.md](chunking.md) | How documents are split into embeddable chunks |
-| [metadata.md](metadata.md) | Metadata schema for each document chunk |
-| [embeddings.md](embeddings.md) | Embedding model selection and configuration |
-| [rag.md](rag.md) | RAG pipeline architecture and retrieval strategy |
-| [knowledge-graph.md](knowledge-graph.md) | Entity extraction and graph construction rules |
-| [sources-of-truth.md](sources-of-truth.md) | Canonical sources and their precedence |
-| [document-priority.md](document-priority.md) | Priority ordering for indexing and retrieval ranking |
+| [indexing-strategy.md](indexing-strategy.md) | Que indexar, que excluir y por que |
+| [chunking.md](chunking.md) | Como se dividen los documentos en fragmentos incrustables |
+| [metadata.md](metadata.md) | Esquema de metadatos para cada fragmento de documento |
+| [embeddings.md](embeddings.md) | Seleccion y configuracion del modelo de incrustacion |
+| [rag.md](rag.md) | Arquitectura del pipeline RAG y estrategia de recuperacion |
+| [knowledge-graph.md](knowledge-graph.md) | Reglas de extraccion de entidades y construccion de grafos |
+| [sources-of-truth.md](sources-of-truth.md) | Fuentes canonicas y su precedencia |
+| [document-priority.md](document-priority.md) | Orden de prioridad para indexacion y clasificacion de recuperacion |
 
-## Target AI Use Cases
+## Casos de Uso de IA Objetivo
 
-| Use Case | Description | Priority |
+| Caso de Uso | Descripcion | Prioridad |
 |---|---|---|
-| **User Management Q&A** | "How do I create a new user and assign roles?" -> answer from docs | P0 |
-| **Permission Queries** | "What role do I need to update a user's profile?" -> RBAC matrix retrieval | P0 |
-| **Incident Assist** | "Users Service shows `503` on user creation — what should I check?" -> runbook extraction | P0 |
-| **Architecture Discovery** | "Show me all services that depend on Users Service" -> knowledge graph traversal | P1 |
-| **Tenant Isolation Audit** | "How are users isolated across tenants?" -> security architecture retrieval | P1 |
-| **Onboarding Copilot** | "I'm new — walk me through setting up local dev for the Users Service" -> guided walkthrough | P1 |
-| **Dependency Impact Analysis** | "If the Auth Service goes down, how does Users Service degrade?" -> dependency and circuit-breaker analysis | P2 |
-| **Compliance Audit** | "Show me the data retention policy for PII fields" -> cross-document retrieval | P2 |
+| **Preguntas y Respuestas sobre Gestion de Usuarios** | "Como creo un nuevo usuario y asigno roles?" -> respuesta desde la documentacion | P0 |
+| **Consultas de Permisos** | "Que rol necesito para actualizar el perfil de un usuario?" -> recuperacion de matriz RBAC | P0 |
+| **Asistencia en Incidentes** | "El Servicio de Usuarios muestra `503` al crear usuario -- que debo revisar?" -> extraccion de runbook | P0 |
+| **Descubrimiento de Arquitectura** | "Muestrame todos los servicios que dependen del Servicio de Usuarios" -> recorrido de grafo de conocimiento | P1 |
+| **Auditoria de Aislamiento de Inquilinos** | "Como estan aislados los usuarios entre inquilinos?" -> recuperacion de arquitectura de seguridad | P1 |
+| **Copiloto de Incorporacion** | "Soy nuevo -- guiame en la configuracion de desarrollo local para el Servicio de Usuarios" -> tutorial guiado | P1 |
+| **Analisis de Impacto de Dependencias** | "Si el Servicio de Autenticacion falla, como se degrada el Servicio de Usuarios?" -> analisis de dependencias y circuit-breaker | P2 |
+| **Auditoria de Cumplimiento** | "Muestrame la politica de retencion de datos para campos PII" -> recuperacion entre documentos | P2 |
 
-## Document Taxonomy
+## Taxonomia de Documentos
 
-The documentation uses implicit and explicit taxonomy markers that the AI pipeline should extract:
+La documentacion utiliza marcadores de taxonomia implicitos y explicitos que el pipeline de IA debe extraer:
 
 ```yaml
-# Implicit in mkdocs.yml navigation hierarchy
+# Implicito en la jerarquia de navegacion de mkdocs.yml
 Architecture > Security > Authentication Flow
 Runbooks > Incident Response > Users Service Unavailable
 API Reference > Users API > POST /api/users
 
-# Explicit in document frontmatter (when present)
+# Explicito en el frontmatter del documento (cuando esta presente)
 ---
 category: architecture
 subcategory: security
@@ -54,7 +54,7 @@ audience: [developers, sre, operators]
 ---
 ```
 
-## Related Documents
+## Documentos Relacionados
 
 - [Sources of Truth](sources-of-truth.md)
 - [Document Priority](document-priority.md)

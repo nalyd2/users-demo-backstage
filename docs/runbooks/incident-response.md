@@ -1,233 +1,233 @@
-# Incident Response Runbook — Users Service
+# Runbook de respuesta a incidentes -- Users Service
 
-**Service:** `users-service` | **Domain:** `identity` | **Owner:** Platform Engineering Team | **Last Updated:** 2026-07-26
+**Servicio:** `users-service` | **Dominio:** `identity` | **Propietario:** Equipo de Ingenieria de Plataforma | **Ultima actualizacion:** 2026-07-26
 
-## Table of Contents
+## Tabla de Contenidos
 
-1. [Severity Definitions](#1-severity-definitions)
-2. [Incident Lifecycle](#2-incident-lifecycle)
-3. [Communication Templates](#3-communication-templates)
-4. [Escalation Paths](#4-escalation-paths)
-5. [Response Playbooks](#5-response-playbooks)
-    - [5.1 Auth Service Unavailable](#51-auth-service-unavailable)
-    - [5.2 Database Connection Failure](#52-database-connection-failure)
-    - [5.3 Event Processing Backlog](#53-event-processing-backlog)
-    - [5.4 Cross-Tenant Data Leak](#54-cross-tenant-data-leak)
-6. [Post-Incident Review](#6-post-incident-review)
+1. [Definiciones de severidad](#1-definiciones-de-severidad)
+2. [Ciclo de vida del incidente](#2-ciclo-de-vida-del-incidente)
+3. [Plantillas de comunicacion](#3-plantillas-de-comunicacion)
+4. [Rutas de escalamiento](#4-rutas-de-escalamiento)
+5. [Playbooks de respuesta](#5-playbooks-de-respuesta)
+    - [5.1 Auth Service no disponible](#51-auth-service-no-disponible)
+    - [5.2 Fallo de conexion de base de datos](#52-fallo-de-conexion-de-base-de-datos)
+    - [5.3 Acumulacion de procesamiento de eventos](#53-acumulacion-de-procesamiento-de-eventos)
+    - [5.4 Fuga de datos entre inquilinos](#54-fuga-de-datos-entre-inquilinos)
+6. [Revision post-incidente](#6-revision-post-incidente)
 
 ---
 
-## 1. Severity Definitions
+## 1. Definiciones de severidad
 
-| Severity | Label | Description | Response Time | Examples |
+| Severidad | Etiqueta | Descripcion | Tiempo de respuesta | Ejemplos |
 |---|---|---|---|---|
-| **SEV-1** | Critical | Complete service outage or data compromise. All authenticated requests failing or confirmed cross-tenant data leak. | < 5 min | Auth Service down > 5 min; database unreachable; PII exposed across tenants |
-| **SEV-2** | High | Partial degradation that affects a subset of users or operations. No data compromise. | < 15 min | Event backlog > 5 min; p99 latency > 1s; tenant-scoped outage |
-| **SEV-3** | Low | Minor impairment with workaround available. No user-facing impact. | < 60 min (next business day) | Stale JWKS cache; non-critical metric alerts; single pod crash-looping |
-| **SEV-4** | Informational | Observation that does not require immediate action. | Logged, no SLA | Audit log warning; rate-limit threshold approaching; deprecation notice |
+| **SEV-1** | Critica | Interrupcion total del servicio o compromiso de datos. Todas las solicitudes autenticadas fallan o fuga de datos entre inquilinos confirmada. | < 5 min | Auth Service caido > 5 min; base de datos inaccesible; PII expuesta entre inquilinos |
+| **SEV-2** | Alta | Degradacion parcial que afecta a un subconjunto de usuarios u operaciones. Sin compromiso de datos. | < 15 min | Acumulacion de eventos > 5 min; latencia p99 > 1s; interrupcion limitada a un inquilino |
+| **SEV-3** | Baja | Deterioro menor con solucion alternativa disponible. Sin impacto visible para el usuario. | < 60 min (siguiente dia habil) | Cache JWKS desactualizada; alertas de metricas no criticas; un solo pod en bucle de fallos |
+| **SEV-4** | Informativa | Observacion que no requiere accion inmediata. | Registrada, sin SLA | Advertencia en log de auditoria; umbral de limite de tasa proximo; aviso de obsolescencia |
 
-**Note:** Any incident where customer PII may have been exposed crosses data-compromise thresholds. Escalate immediately to SEV-1 and involve InfoSec per the data-breach notification policy.
+**Nota:** Cualquier incidente donde la PII del cliente pueda haber sido expuesta cruza los umbrales de compromiso de datos. Escalar inmediatamente a SEV-1 e involucrar a InfoSec segun la politica de notificacion de violacion de datos.
 
 ---
 
-## 2. Incident Lifecycle
+## 2. Ciclo de vida del incidente
 
 ```mermaid
 flowchart TD
-    A[Alert fires / User reports] --> B{Triage: Assign Severity}
-    B --> C[Declare incident in PagerDuty]
-    C --> D[Notify #incident-response channel]
-    D --> E[Assign Incident Commander IC]
-    E --> F[Execute relevant playbook]
-    F --> G{Resolved?}
-    G -- No --> H[Escalate per severity matrix]
+    A[Alerta se dispara / Usuario reporta] --> B{Triage: Asignar severidad}
+    B --> C[Declarar incidente en PagerDuty]
+    C --> D[Notificar canal #incident-response]
+    D --> E[Asignar comandante de incidente CI]
+    E --> F[Ejecutar playbook relevante]
+    F --> G{Resuelto?}
+    G -- No --> H[Escalar segun matriz de severidad]
     H --> F
-    G -- Yes --> I[Verify fix in staging]
-    I --> J[Deploy to production]
-    J --> K[Monitor for 30 min post-resolve]
-    K --> L[Close incident]
-    L --> M[Schedule Post-Incident Review PIR]
+    G -- Si --> I[Verificar correccion en staging]
+    I --> J[Desplegar a produccion]
+    J --> K[Monitorear durante 30 min post-resolucion]
+    K --> L[Cerrar incidente]
+    L --> M[Programar revision post-incidente RPI]
 ```
 
-### Key Roles During an Incident
+### Roles clave durante un incidente
 
-| Role | Responsibility | Assigned By |
+| Rol | Responsabilidad | Asignado por |
 |---|---|---|
-| **Incident Commander (IC)** | Coordinates response, communicates status, drives decision-making | First responder or SRE on-call |
-| **Subject Matter Expert (SME)** | Technical diagnosis and remediation | IC delegates to service owner or developer |
-| **Scribe** | Documents timeline, actions taken, decisions made | IC assigns any available engineer |
-| **Customer Liaison** | Updates stakeholders and affected users | IC coordinates with Platform Communications |
+| **Comandante de incidente (CI)** | Coordina la respuesta, comunica el estado, impulsa la toma de decisiones | Primer respondedor o SRE de guardia |
+| **Experto en la materia (EEM)** | Diagnostico tecnico y remediacion | El CI delega al propietario del servicio o desarrollador |
+| **Escriba** | Documenta la linea de tiempo, acciones tomadas, decisiones tomadas | El CI asigna cualquier ingeniero disponible |
+| **Enlace con el cliente** | Actualiza a las partes interesadas y usuarios afectados | El CI coordina con Comunicaciones de Plataforma |
 
 ---
 
-## 3. Communication Templates
+## 3. Plantillas de comunicacion
 
-### 3.1 Initial Alert (Slack — `#incident-response`)
+### 3.1 Alerta inicial (Slack -- `#incident-response`)
 
 ```
-:rotating_light: *INCIDENT DECLARED* — SEV-[1|2|3]
-*Service:* users-service
-*Summary:* [one sentence describing the problem]
-*Impact:* [affected endpoints, tenants, or user base]
-*Time detected:* [UTC timestamp]
-*Assigned IC:* @handle
-*Playbook:* [link to relevant section below]
+:rotating_light: *INCIDENTE DECLARADO* — SEV-[1|2|3]
+*Servicio:* users-service
+*Resumen:* [una oracion describiendo el problema]
+*Impacto:* [endpoints, inquilinos o base de usuarios afectados]
+*Hora de deteccion:* [marca de tiempo UTC]
+*CI asignado:* @handle
+*Playbook:* [enlace a la seccion relevante a continuacion]
 :rotating_light:
 ```
 
-### 3.2 Status Update (Every 30 min for SEV-1, 60 min for SEV-2)
+### 3.2 Actualizacion de estado (Cada 30 min para SEV-1, 60 min para SEV-2)
 
 ```
-*INCIDENT UPDATE* — SEV-[1|2|3] | [incident ID]
-*Duration:* [X] min
-*Current status:* [Investigating / Mitigating / Monitoring / Resolved]
-*Actions taken:*
-  - [action 1]
-  - [action 2]
-*Next step:* [planned action]
-*Next update:* [time]
+*ACTUALIZACION DE INCIDENTE* — SEV-[1|2|3] | [ID del incidente]
+*Duracion:* [X] min
+*Estado actual:* [Investigando / Mitigando / Monitoreando / Resuelto]
+*Acciones tomadas:*
+  - [accion 1]
+  - [accion 2]
+*Siguiente paso:* [accion planificada]
+*Proxima actualizacion:* [hora]
 ```
 
-### 3.3 Resolution Notice
+### 3.3 Aviso de resolucion
 
 ```
-:white_check_mark: *INCIDENT RESOLVED* — SEV-[1|2|3] | [incident ID]
-*Duration:* [X] min
-*Root cause:* [one sentence]
-*Mitigation:* [what was done to restore service]
-*Monitoring window:* 30 min post-resolve
-*PIR scheduled:* [date or TBD]
+:white_check_mark: *INCIDENTE RESUELTO* — SEV-[1|2|3] | [ID del incidente]
+*Duracion:* [X] min
+*Causa raiz:* [una oracion]
+*Mitigacion:* [lo que se hizo para restaurar el servicio]
+*Ventana de monitoreo:* 30 min post-resolucion
+*RPI programada:* [fecha o por definir]
 ```
 
-### 3.4 Stakeholder Notification (Email — SEV-1 / Data Breach)
+### 3.4 Notificacion a partes interesadas (Correo electronico -- SEV-1 / Violacion de datos)
 
 ```
-Subject: [SEV-1] Incident Report — Users Service — [date]
+Asunto: [SEV-1] Informe de incidente — Users Service — [fecha]
 
-Classification: Internal — Confidential
+Clasificacion: Interno — Confidencial
 
-Summary:
-[2-3 sentence description of what happened]
+Resumen:
+[descripcion de 2-3 oraciones de lo que sucedio]
 
-Impact:
-- Affected tenants: [list or "all"]
-- Users affected: [count or range]
-- Data exposure: [none / describe scope]
-- Duration: [start] UTC to [end] UTC
+Impacto:
+- Inquilinos afectados: [lista o "todos"]
+- Usuarios afectados: [cantidad o rango]
+- Exposicion de datos: [ninguna / describir alcance]
+- Duracion: [inicio] UTC a [fin] UTC
 
-Root Cause:
-[one paragraph]
+Causa raiz:
+[un parrafo]
 
-Actions Taken:
-- [immediate containment step]
-- [remediation step]
-- [verification step]
+Acciones tomadas:
+- [paso de contencion inmediato]
+- [paso de remediacion]
+- [paso de verificacion]
 
-Next Steps:
-- Post-Incident Review scheduled: [date]
-- Engineering tracking issue: [link]
-- Customer-specific comms: [owner]
+Proximos pasos:
+- Revision post-incidente programada: [fecha]
+- Tarea de seguimiento de ingenieria: [enlace]
+- Comunicaciones especificas del cliente: [propietario]
 
-Contact:
-Incident Commander: [name] — [slack handle] — [phone]
+Contacto:
+Comandante de incidente: [nombre] — [handle de Slack] — [telefono]
 ```
 
 ---
 
-## 4. Escalation Paths
+## 4. Rutas de escalamiento
 
-### 4.1 Standard Escalation
+### 4.1 Escalamiento estandar
 
 ```
-Level 1  Primary On-Call SRE        ─── PagerDuty rotation
+Nivel 1  SRE de guardia primario        ─── Rotacion de PagerDuty
          ↑
-Level 2  Platform Engineering Team  ─── #platform-eng (Slack)
+Nivel 2  Equipo de Ingenieria de Plataforma  ─── #platform-eng (Slack)
          ↑
-Level 3  Engineering Manager        ─── #platform-leads (Slack) + Phone
+Nivel 3  Gerente de Ingenieria         ─── #platform-leads (Slack) + Telefono
          ↑
-Level 4  Director of Platform       ─── Phone (via OpsGenie)
+Nivel 4  Director de Plataforma       ─── Telefono (via OpsGenie)
 ```
 
-### 4.2 Specialized Escalation Contacts
+### 4.2 Contactos de escalamiento especializado
 
-| Area | Contact | Channel | Hours |
+| Area | Contacto | Canal | Horario |
 |---|---|---|---|
-| **Security / InfoSec** | `infosec@internal.platform` | `#infosec` | 24/7 (SEV-1 data breach) |
-| **Database (DBA)** | `dba@internal.platform` | `#database-admin` | Business hours + on-call |
-| **Auth Service** | Auth Service owner | `#auth-service` | 24/7 |
-| **Azure Infrastructure** | `#cloud-infra` | PagerDuty rotation | 24/7 |
-| **Notification Service** | `#notification-service` | Slack | Business hours |
+| **Seguridad / InfoSec** | `infosec@internal.platform` | `#infosec` | 24/7 (SEV-1 violacion de datos) |
+| **Base de datos (DBA)** | `dba@internal.platform` | `#database-admin` | Horario laboral + guardia |
+| **Auth Service** | Propietario de Auth Service | `#auth-service` | 24/7 |
+| **Infraestructura Azure** | `#cloud-infra` | Rotacion de PagerDuty | 24/7 |
+| **Notification Service** | `#notification-service` | Slack | Horario laboral |
 
-### 4.3 When to Escalate
+### 4.3 Cuando escalar
 
-- **SEV-1:** Escalate immediately to Level 2 if no progress in 15 min. Level 3 if unresolved at 30 min.
-- **SEV-2:** Escalate to Level 2 if no progress in 60 min. Level 3 if unresolved at 4 hours.
-- **SEV-3:** Escalate to Level 2 next business day if not resolved.
+- **SEV-1:** Escalar inmediatamente a Nivel 2 si no hay progreso en 15 min. Nivel 3 si no se resuelve en 30 min.
+- **SEV-2:** Escalar a Nivel 2 si no hay progreso en 60 min. Nivel 3 si no se resuelve en 4 horas.
+- **SEV-3:** Escalar a Nivel 2 el siguiente dia habil si no se resuelve.
 
-**If in doubt, escalate.** It is always better to wake someone early than to discover the problem later.
+**En caso de duda, escalar.** Siempre es mejor despertar a alguien temprano que descubrir el problema mas tarde.
 
 ---
 
-## 5. Response Playbooks
+## 5. Playbooks de respuesta
 
-### 5.1 Auth Service Unavailable
+### 5.1 Auth Service no disponible
 
-**Description:** The Users Service cannot reach the Authentication Service for JWT validation. After the local JWKS cache expires (5 min TTL), all authenticated requests fail with HTTP 503.
+**Descripcion:** El Users Service no puede alcanzar el Authentication Service para la validacion de JWT. Despues de que la cache local de JWKS expire (TTL de 5 min), todas las solicitudes autenticadas fallan con HTTP 503.
 
-**Symptoms:**
-- `users_jwt_validation_errors_total` spiking
-- `users_http_5xx_total` rising on all authenticated endpoints
-- `users_auth_service_grpc_latency` showing timeouts or connection refused
-- Alert: `AuthServiceUnreachable`
-- Unauthenticated endpoints (`/api/health/live`, `/api/health/ready`) still respond normally
+**Sintomas:**
+- `users_jwt_validation_errors_total` aumentando
+- `users_http_5xx_total` aumentando en todos los endpoints autenticados
+- `users_auth_service_grpc_latency` mostrando timeouts o conexion rechazada
+- Alerta: `AuthServiceUnreachable`
+- Los endpoints no autenticados (`/api/health/live`, `/api/health/ready`) aun responden normalmente
 
-**Metrics to Check:**
+**Metricas a verificar:**
 
-| Metric | Threshold | Source |
+| Metrica | Umbral | Origen |
 |---|---|---|
 | `users_auth_service_grpc_latency` | > 1s | Prometheus |
 | `users_auth_service_grpc_errors_total` | > 0 | Prometheus |
-| `users_jwks_cache_age_seconds` | > 300 (cache expiry) | Prometheus |
-| Auth Service pod status | `CrashLoopBackOff` or `0/3 Ready` | `kubectl` |
+| `users_jwks_cache_age_seconds` | > 300 (vencimiento de cache) | Prometheus |
+| Estado de pods de Auth Service | `CrashLoopBackOff` o `0/3 Ready` | `kubectl` |
 
-**Response Steps:**
+**Pasos de respuesta:**
 
 ```mermaid
 flowchart TD
-    A[Alert fires] --> B{Is JWKS cache still valid?}
-    B -- Yes (< 5 min old --> C[Set degraded status in dashboard]
-    C --> D[Investigate root cause of Auth Service outage)
-    D --> E[Restore Auth Service per its runbook]
-    E --> F[Verify gRPC connectivity returns]
-    B -- No (> 5 min old --> G[SERIOUS: all authenticated users blocked]
-    G --> H[Option A: Restore Auth Service urgently]
-    H --> I[Option B: Extend JWKS cache TTL via feature flag]
-    I --> J{Option B approved by IC?}
-    J -- Yes --> K[Set feature flag jwksCacheTtlOverride=600]
-    K --> L[Document risk: stale JWKS could allow revoked tokens]
-    L --> M[Proceed with Auth Service restoration in parallel]
+    A[Alerta se dispara] --> B{La cache JWKS sigue siendo valida?}
+    B -- Si (< 5 min de antiguedad) --> C[Establecer estado degradado en dashboard]
+    C --> D[Investigar causa raiz de la interrupcion de Auth Service]
+    D --> E[Restaurar Auth Service segun su runbook]
+    E --> F[Verificar que la conectividad gRPC regrese]
+    B -- No (> 5 min de antiguedad) --> G[GRAVE: todos los usuarios autenticados bloqueados]
+    G --> H[Opcion A: Restaurar Auth Service urgentemente]
+    H --> I[Opcion B: Extender TTL de cache JWKS mediante feature flag]
+    I --> J{Opcion B aprobada por el CI?}
+    J -- Si --> K[Establecer feature flag jwksCacheTtlOverride=600]
+    K --> L[Documentar riesgo: JWKS desactualizado podria permitir tokens revocados]
+    L --> M[Proceder con la restauracion de Auth Service en paralelo]
     J -- No --> M
-    M --> N[Verify authenticated requests succeed]
+    M --> N[Verificar que las solicitudes autenticadas tengan exito]
 ```
 
-**Detailed Steps:**
+**Pasos detallados:**
 
-1. **Confirm the alert** — check Grafana dashboard `Users Service — Auth Dependency`
-2. **Verify cache status** — query `users_jwks_cache_age_seconds` in Prometheus. If < 300s, service is still functional. Proceed to root-cause investigation without urgent escalation.
-3. **Check Auth Service health** — from a debug pod:
+1. **Confirmar la alerta** -- verificar el dashboard de Grafana `Users Service -- Auth Dependency`
+2. **Verificar el estado de la cache** -- consultar `users_jwks_cache_age_seconds` en Prometheus. Si es < 300s, el servicio aun es funcional. Proceder a la investigacion de causa raiz sin escalamiento urgente.
+3. **Verificar la salud de Auth Service** -- desde un pod de depuracion:
 
    ```bash
    grpcurl -insecure auth-service.platform.svc.cluster.local:5103 \
      health.Health/Check
    ```
 
-4. **If Auth Service is down:**
-   - Page the Auth Service on-call via PagerDuty (`#auth-service`)
-   - Notify `#incident-response` with the cross-service impact
-   - If the outage extends past 5 min and the cache has expired, assess Option B
+4. **Si Auth Service esta caido:**
+   - Notificar al equipo de guardia de Auth Service via PagerDuty (`#auth-service`)
+   - Notificar a `#incident-response` con el impacto entre servicios
+   - Si la interrupcion se extiende mas alla de 5 min y la cache ha expirado, evaluar la Opcion B
 
-5. **Option B — Extend JWKS cache TTL (emergency override only):**
-   - Set via Azure App Configuration feature flag:
+5. **Opcion B -- Extender TTL de cache JWKS (solo anulacion de emergencia):**
+   - Establecer mediante feature flag de Azure App Configuration:
      ```bash
      az appconfig kv set \
        --name platform-feature-flags \
@@ -235,78 +235,78 @@ flowchart TD
        --value "600" \
        --label emergency-$(date +%Y%m%d)
      ```
-   - This does NOT require a deployment; the service polls App Configuration every 60s
-   - **Risk:** Revoked tokens will be accepted until the cache refreshes. Only use when the alternative is a total service outage.
-   - **Revert** once Auth Service is restored: delete the key or set it back to empty.
+   - Esto NO requiere un despliegue; el servicio consulta App Configuration cada 60s
+   - **Riesgo:** Los tokens revocados seran aceptados hasta que la cache se actualice. Usar solo cuando la alternativa sea una interrupcion total del servicio.
+   - **Revertir** una vez que Auth Service sea restaurado: eliminar la clave o establecerla de nuevo a vacio.
 
-6. **Verify fix:**
+6. **Verificar la correccion:**
    ```bash
    curl -s -o /dev/null -w "%{http_code}" \
      -H "Authorization: Bearer $(valid-test-jwt)" \
      https://users-service.platform/api/users
-   # Expected: 200
+   # Esperado: 200
    ```
 
-7. **Post-resolution:** Monitor `users_jwks_cache_age_seconds` returning to normal (< 300), all error metrics trending to zero. Keep the monitoring window open for 30 min.
+7. **Post-resolucion:** Monitorear `users_jwks_cache_age_seconds` regresando a la normalidad (< 300), todas las metricas de error tendiendo a cero. Mantener la ventana de monitoreo abierta durante 30 min.
 
-**Rollback:** If using the feature-flag override, delete the flag immediately after Auth Service restoration to return to default behavior.
+**Revertir:** Si se uso la anulacion de feature flag, eliminar el flag inmediatamente despues de la restauracion de Auth Service para volver al comportamiento predeterminado.
 
 ---
 
-### 5.2 Database Connection Failure
+### 5.2 Fallo de conexion de base de datos
 
-**Description:** The Users Service cannot establish or maintain connections to PostgreSQL. The readiness probe fails, pods are removed from the load balancer, and all requests fail with HTTP 503.
+**Descripcion:** El Users Service no puede establecer o mantener conexiones con PostgreSQL. La sonda de readiness falla, los pods se eliminan del balanceador de carga y todas las solicitudes fallan con HTTP 503.
 
-**Symptoms:**
-- `users_db_connection_errors_total` spiking
-- Readiness probe (`/api/health/ready`) returning 503
-- Pods being restarted or removed by Kubernetes
-- Alert: `DatabaseConnectionFailure`
-- Application logs containing `NpgsqlException`, `connection failed`, or `timeout`
+**Sintomas:**
+- `users_db_connection_errors_total` aumentando
+- Sonda de readiness (`/api/health/ready`) devolviendo 503
+- Pods siendo reiniciados o eliminados por Kubernetes
+- Alerta: `DatabaseConnectionFailure`
+- Logs de aplicacion conteniendo `NpgsqlException`, `connection failed` o `timeout`
 
-**Metrics to Check:**
+**Metricas a verificar:**
 
-| Metric | Threshold | Source |
+| Metrica | Umbral | Origen |
 |---|---|---|
-| `users_db_connection_errors_total` | > 0 in last 5 min | Prometheus |
-| `users_db_connection_pool_size` | 0 or stuck at max (30) | Prometheus |
+| `users_db_connection_errors_total` | > 0 en los ultimos 5 min | Prometheus |
+| `users_db_connection_pool_size` | 0 o estancado en el maximo (30) | Prometheus |
 | `users_db_command_duration_seconds` | > 5s | Prometheus |
-| `users_readiness_probe_failures_total` | > 3 consecutive | Prometheus |
+| `users_readiness_probe_failures_total` | > 3 consecutivos | Prometheus |
 
-**Response Steps:**
+**Pasos de respuesta:**
 
 ```mermaid
 flowchart TD
-    A[Alert fires] --> B[Check if DB is reachable from jumpbox]
-    B -- Reachable --> C[Check connection pool exhaustion]
-    C --> D[Check for long-running queries + locks]
-    D --> E[Kill blocking sessions if found]
-    E --> F[Verify pod connectivity normalizes]
-    B -- Unreachable --> G{Partial or full outage?}
-    G -- Partial --> H[Check standby promotion]
-    G -- Full --> I[Engage Azure support / DBA on-call]
-    H --> J[Promote standby or fail over]
-    J --> K[Update connection string in Key Vault]
-    K --> L[Roll pods to pick up new connection string]
+    A[Alerta se dispara] --> B[Verificar si BD es accesible desde jumpbox]
+    B -- Accesible --> C[Verificar agotamiento del pool de conexiones]
+    C --> D[Verificar consultas de larga duracion + bloqueos]
+    D --> E[Finalizar sesiones bloqueantes si se encuentran]
+    E --> F[Verificar que la conectividad del pod se normalice]
+    B -- Inaccesible --> G{Interrupcion parcial o total?}
+    G -- Parcial --> H[Verificar promocion de standby]
+    G -- Total --> I[Contactar soporte Azure / DBA de guardia]
+    H --> J[Promover standby o realizar conmutacion por error]
+    J --> K[Actualizar cadena de conexion en Key Vault]
+    K --> L[Reiniciar pods para que tomen la nueva cadena de conexion]
     L --> F
 ```
 
-**Detailed Steps:**
+**Pasos detallados:**
 
-1. **Confirm reachability** — from a jumpbox pod:
+1. **Confirmar accesibilidad** -- desde un pod jumpbox:
    ```bash
    psql "host=users-db.postgres.database.azure.com \
          port=5432 dbname=usersdb \
          sslmode=require" -c "SELECT 1;"
    ```
 
-2. **Investigate connection pool — check Npgsql counters:**
-   - `users_db_connection_pool_size` at max (30) + `users_db_connection_errors_total` > 0 suggests pool exhaustion
-   - Common causes: slow queries holding connections, connection leaks, transaction not disposed
+2. **Investigar el pool de conexiones -- verificar contadores de Npgsql:**
+   - `users_db_connection_pool_size` en el maximo (30) + `users_db_connection_errors_total` > 0 sugiere agotamiento del pool
+   - Causas comunes: consultas lentas reteniendo conexiones, fugas de conexion, transaccion no liberada
 
-3. **Identify blocking queries:**
+3. **Identificar consultas bloqueantes:**
    ```sql
-   -- Run on the PostgreSQL primary
+   -- Ejecutar en el PostgreSQL primario
    SELECT pid, wait_event_type, wait_event, state, query_start, 
           LEFT(query, 120) AS query_short
    FROM pg_stat_activity
@@ -315,7 +315,7 @@ flowchart TD
    ORDER BY query_start;
    ```
 
-4. **Kill blocked or runaway sessions:**
+4. **Finalizar sesiones bloqueadas o descontroladas:**
    ```sql
    SELECT pg_terminate_backend(pid)
    FROM pg_stat_activity
@@ -324,86 +324,86 @@ flowchart TD
      AND query_start < NOW() - INTERVAL '5 minutes';
    ```
 
-5. **If database is unreachable:**
-   - Check Azure PostgreSQL status at https://status.azure.com
-   - If standby is healthy, initiate failover:
+5. **Si la base de datos es inaccesible:**
+   - Verificar el estado de Azure PostgreSQL en https://status.azure.com
+   - Si el standby esta saludable, iniciar conmutacion por error:
      ```bash
      az postgres flexible-server failover \
        --resource-group platform-rg \
        --name users-db-primary
      ```
-   - Update the connection string in Key Vault if the failover changed the endpoint
-   - Roll the Users Service pods to pick up the new connection:
+   - Actualizar la cadena de conexion en Key Vault si la conmutacion cambio el endpoint
+   - Reiniciar los pods del Users Service para que tomen la nueva conexion:
      ```bash
      kubectl rollout restart deployment/users-service -n platform
      ```
 
-6. **Verify recovery:**
-   - Check readiness probe returns 200:
+6. **Verificar recuperacion:**
+   - Verificar que la sonda de readiness devuelva 200:
      ```bash
      curl -s -o /dev/null -w "%{http_code}" \
        https://users-service.platform/api/health/ready
-     # Expected: 200
+     # Esperado: 200
      ```
-   - Confirm connection pool normalizes: `users_db_connection_pool_size` should be between 5 and 15 under normal load
+   - Confirmar que el pool de conexiones se normalice: `users_db_connection_pool_size` debe estar entre 5 y 15 bajo carga normal
 
-7. **Post-resolution actions:**
-   - Review PostgreSQL slow-query log to identify the query that caused the issue
-   - Check if an index is missing or a query plan regressed
-   - File a follow-up task for query optimization if needed
+7. **Acciones post-resolucion:**
+   - Revisar el log de consultas lentas de PostgreSQL para identificar la consulta que causo el problema
+   - Verificar si falta un indice o si un plan de consulta ha retrocedido
+   - Crear una tarea de seguimiento para optimizacion de consultas si es necesario
 
 ---
 
-### 5.3 Event Processing Backlog
+### 5.3 Acumulacion de procesamiento de eventos
 
-**Description:** Auth events accumulating on Azure Service Bus faster than the Users Service can consume them. Reads from the user profile may be stale, and downstream systems relying on user state may have incomplete data.
+**Descripcion:** Eventos de autenticacion acumulandose en Azure Service Bus mas rapido de lo que el Users Service puede consumirlos. Las lecturas del perfil de usuario pueden estar desactualizadas y los sistemas posteriores que dependen del estado del usuario pueden tener datos incompletos.
 
-**Symptoms:**
-- `users_event_processing_lag_seconds` > 60 (alert threshold)
-- `users_event_processing_lag_seconds` > 300 (SEV-2 threshold)
-- Dead-letter queue (DLQ) receiving messages
-- `users_events_processed_total` flatlining despite `auth-events` topic activity
-- Users reporting stale `last_login_at` or `last_logout_at` timestamps
+**Sintomas:**
+- `users_event_processing_lag_seconds` > 60 (umbral de alerta)
+- `users_event_processing_lag_seconds` > 300 (umbral SEV-2)
+- Cola de mensajes fallidos (DLQ) recibiendo mensajes
+- `users_events_processed_total` sin cambios a pesar de la actividad del topico `auth-events`
+- Usuarios reportando marcas de tiempo `last_login_at` o `last_logout_at` desactualizadas
 
-**Metrics to Check:**
+**Metricas a verificar:**
 
-| Metric | Threshold | Source |
+| Metrica | Umbral | Origen |
 |---|---|---|
-| `users_event_processing_lag_seconds` | > 60 (warning), > 300 (critical) | Prometheus |
-| `users_event_processing_duration_seconds` | > 5s per event | Prometheus |
+| `users_event_processing_lag_seconds` | > 60 (advertencia), > 300 (critico) | Prometheus |
+| `users_event_processing_duration_seconds` | > 5s por evento | Prometheus |
 | `users_event_dlq_count` | > 0 | Prometheus + Azure Monitor |
-| `users_event_deduplication_cache_size` | > 10,000 entries | Prometheus |
+| `users_event_deduplication_cache_size` | > 10,000 entradas | Prometheus |
 
-**Response Steps:**
+**Pasos de respuesta:**
 
 ```mermaid
 flowchart TD
-    A[Alert fires] --> B[Check lag value and velocity]
-    B --> C{Is lag increasing?}
-    C -- Yes --> D[Check consumer throughput]
-    D --> E{Is deduplication table growing?}
-    E -- Yes --> F[Check for repeated event replay]
-    F --> G[Inspect DLQ for poisoned messages]
-    G --> H[Reprocess or skip poisoned messages]
-    C -- No, steady-state --> I[Lag within acceptable bounds for recovery]
-    I --> J[Scale up event consumers]
+    A[Alerta se dispara] --> B[Verificar valor y velocidad del retraso]
+    B --> C{El retraso esta aumentando?}
+    C -- Si --> D[Verificar rendimiento del consumidor]
+    D --> E{La tabla de deduplicacion esta creciendo?}
+    E -- Si --> F[Verificar reproduccion repetida de eventos]
+    F --> G[Inspeccionar DLQ en busca de mensajes envenenados]
+    G --> H[Reprocesar o saltar mensajes envenenados]
+    C -- No, estado estable --> I[Retraso dentro de limites aceptables para recuperacion]
+    I --> J[Escalar consumidores de eventos]
     H --> J
     E -- No --> J
-    J --> K[Monitor lag draining to < 30s]
+    J --> K[Monitorear retraso reduciendose a < 30s]
 ```
 
-**Detailed Steps:**
+**Pasos detallados:**
 
-1. **Assess the backlog magnitude:**
+1. **Evaluar la magnitud del backlog:**
    ```bash
-   # Query Azure Service Bus subscription metrics
+   # Consultar metricas de suscripcion de Azure Service Bus
    az monitor metrics list \
      --resource /subscriptions/.../servicebus/.../topics/auth-events \
      --metric "ActiveMessages" \
      --interval 5m
    ```
 
-2. **Check the dead-letter queue:**
+2. **Verificar la cola de mensajes fallidos:**
    ```bash
    az servicebus topic subscription show \
      --resource-group platform-rg \
@@ -412,7 +412,7 @@ flowchart TD
      --subscription-name users-service \
      --query "deadLetteringOnMessageExpiration"
    ```
-   - View DLQ messages via Azure Portal or:
+   - Ver mensajes DLQ mediante Azure Portal o:
      ```bash
      az servicebus topic subscription message peek \
        --resource-group platform-rg \
@@ -421,12 +421,12 @@ flowchart TD
        --subscription-name users-service/$DeadLetterQueueName
      ```
 
-3. **Identify poisoned messages** — a message that fails processing repeatedly (schema error, malformed payload, referential integrity failure):
-   - Check application logs for `EventProcessingException` or `DeadLetterException`
-   - Common causes: event payload missing required fields, user ID referencing a deleted user, foreign-key violation
-   - If a specific message is poisoned:
+3. **Identificar mensajes envenenados** -- un mensaje que falla el procesamiento repetidamente (error de esquema, payload malformado, fallo de integridad referencial):
+   - Verificar logs de aplicacion en busca de `EventProcessingException` o `DeadLetterException`
+   - Causas comunes: payload de evento con campos requeridos faltantes, ID de usuario referenciando un usuario eliminado, violacion de clave foranea
+   - Si un mensaje especifico esta envenenado:
      ```bash
-     # Receive and complete the message from DLQ to remove it
+     # Recibir y completar el mensaje de la DLQ para eliminarlo
      az servicebus topic subscription message receive \
        --resource-group platform-rg \
        --namespace-name platform-sb \
@@ -435,15 +435,15 @@ flowchart TD
        --count 1
      ```
 
-4. **Scale up consumers** (two approaches):
+4. **Escalar consumidores** (dos enfoques):
 
-   **A. Horizontal pod scaling (if cluster capacity permits):**
+   **A. Escalado horizontal de pods (si la capacidad del cluster lo permite):**
    ```bash
    kubectl scale deployment/users-service --replicas=6 -n platform
    ```
-   Wait 2 min for the new pods to register their Service Bus receivers.
+   Esperar 2 min para que los nuevos pods registren sus receptores de Service Bus.
 
-   **B. Increase concurrent message handlers (no deployment needed):**
+   **B. Aumentar manejadores de mensajes concurrentes (sin necesidad de despliegue):**
    ```bash
    az appconfig kv set \
      --name platform-feature-flags \
@@ -451,76 +451,76 @@ flowchart TD
      --value "20" \
      --label scaling-$(date +%Y%m%d)
    ```
-   Default is 10. Max safe value is 30 per pod, bounded by available CPU.
+   El valor predeterminado es 10. El maximo seguro es 30 por pod, limitado por la CPU disponible.
 
-5. **Verify backlog draining:**
-   - Monitor `users_event_processing_lag_seconds` decreasing
-   - Dashboard: `Event Processing Lag` should trend down within minutes
-   - Target: lag < 30s
+5. **Verificar la reduccion del backlog:**
+   - Monitorear `users_event_processing_lag_seconds` disminuyendo
+   - Dashboard: `Event Processing Lag` debe tender a la baja en minutos
+   - Objetivo: retraso < 30s
 
-6. **Scale back down post-recovery** — after the backlog clears, return to baseline:
+6. **Reducir escala despues de la recuperacion** -- una vez que el backlog se haya limpiado, volver a la linea base:
    ```bash
    kubectl scale deployment/users-service --replicas=3 -n platform
    ```
-   Delete the `maxConcurrentEventHandlers` feature flag to return to default.
+   Eliminar el feature flag `maxConcurrentEventHandlers` para volver al valor predeterminado.
 
-7. **Review deduplication table** — if the backlog was caused by a replay storm (same events re-delivered):
+7. **Revisar la tabla de deduplicacion** -- si el backlog fue causado por una tormenta de reproduccion (mismos eventos re-entregados):
    ```sql
-   -- Check event_deduplication growth rate
+   -- Verificar tasa de crecimiento de event_deduplication
    SELECT COUNT(*), MIN(consumed_at), MAX(consumed_at)
    FROM event_deduplication
    WHERE consumed_at > NOW() - INTERVAL '1 hour';
    ```
-   If the table is oversized (> 100k entries), the retention cleanup job may need tuning.
+   Si la tabla es demasiado grande (> 100k entradas), el trabajo de limpieza de retencion puede necesitar ajuste.
 
 ---
 
-### 5.4 Cross-Tenant Data Leak
+### 5.4 Fuga de datos entre inquilinos
 
-**IMPORTANT:** This is a **SEV-1 security incident**. Follow these steps exactly. Do not discuss details in public channels. Involve InfoSec from step 1.
+**IMPORTANTE:** Este es un **incidente de seguridad SEV-1**. Siga estos pasos exactamente. No discuta detalles en canales publicos. Involucre a InfoSec desde el paso 1.
 
-**Description:** A defect in the Users Service caused data from one tenant to be visible to another tenant's users. This violates the core multi-tenancy isolation guarantee and may expose PII.
+**Descripcion:** Un defecto en el Users Service provoco que los datos de un inquilino fueran visibles para los usuarios de otro inquilino. Esto viola la garantia central de aislamiento de multi-inquilino y puede exponer PII.
 
-**Symptoms:**
-- User reports seeing another tenant's data in their API response
-- Audit log shows a query missing the `tenant_id` filter
-- `users_cross_tenant_access_attempts_total` metric fires (if RLS violation-detection is active)
-- Security scan or penetration test finding
-- Alert: `PossibleCrossTenantDataLeak`
+**Sintomas:**
+- Usuario reporta ver datos de otro inquilino en su respuesta de API
+- El log de auditoria muestra una consulta que falta el filtro `tenant_id`
+- La metrica `users_cross_tenant_access_attempts_total` se dispara (si la deteccion de violacion de RLS esta activa)
+- Hallazgo de escaneo de seguridad o prueba de penetracion
+- Alerta: `PossibleCrossTenantDataLeak`
 
-**Metrics to Check:**
+**Metricas a verificar:**
 
-| Metric | Threshold | Source |
+| Metrica | Umbral | Origen |
 |---|---|---|
-| `users_cross_tenant_access_attempts_total` | > 0 (triggers investigation) | Prometheus |
-| `users_http_4xx_total` by endpoint by tenant | Anomalous pattern | Prometheus |
+| `users_cross_tenant_access_attempts_total` | > 0 (activa investigacion) | Prometheus |
+| `users_http_4xx_total` por endpoint por inquilino | Patron anomalo | Prometheus |
 
-**Response Steps:**
+**Pasos de respuesta:**
 
 ```mermaid
 flowchart TD
-    A[Alert or report received] --> B[Immediately involve InfoSec]
-    B --> C[IC declares SEV-1 incident]
-    C --> D[Disable non-critical mutating endpoints]
-    D --> E[Identify affected queries and time window]
-    E --> F[Extract audit logs for exposure scope]
-    F --> G{How many tenants/users exposed?}
-    G -- None confirmed --> H[Fix the defect + deploy hotfix]
-    G -- Partial scope --> I[Notify affected tenant admins]
-    H --> J[Deploy fix to all environments]
+    A[Alerta o reporte recibido] --> B[Involucrar a InfoSec inmediatamente]
+    B --> C[El CI declara incidente SEV-1]
+    C --> D[Deshabilitar endpoints de mutacion no criticos]
+    D --> E[Identificar consultas afectadas y ventana de tiempo]
+    E --> F[Extraer logs de auditoria para alcance de exposicion]
+    F --> G{Cuantos inquilinos/usuarios expuestos?}
+    G -- Ninguno confirmado --> H[Corregir el defecto + desplegar parche]
+    G -- Alcance parcial --> I[Notificar a administradores de inquilinos afectados]
+    H --> J[Desplegar correccion en todos los entornos]
     I --> J
-    J --> K[Verify RLS policies are enforced]
-    K --> L[Enable endpoints after verification]
-    L --> M[Full security review + PIR]
+    J --> K[Verificar que las politicas RLS se apliquen]
+    K --> L[Habilitar endpoints despues de la verificacion]
+    L --> M[Revision de seguridad completa + RPI]
 ```
 
-**Detailed Steps:**
+**Pasos detallados:**
 
-1. **Immediate containment — freeze and isolate:**
-   - The Incident Commander declares a **SEV-1** in PagerDuty
-   - Notify InfoSec via `#infosec` and `infosec@internal.platform`
-   - **Do not** discuss specific findings in public channels
-   - If the leak is actively occurring, the IC may decide to disable mutating endpoints:
+1. **Contencion inmediata -- congelar y aislar:**
+   - El Comandante de Incidente declara un **SEV-1** en PagerDuty
+   - Notificar a InfoSec via `#infosec` y `infosec@internal.platform`
+   - **No** discutir hallazgos especificos en canales publicos
+   - Si la fuga esta ocurriendo activamente, el CI puede decidir deshabilitar endpoints de mutacion:
      ```bash
      az appconfig kv set \
        --name platform-feature-flags \
@@ -528,138 +528,138 @@ flowchart TD
        --value "true" \
        --label security-freeze-$(date +%Y%m%d%H%M)
      ```
-     This keeps read (GET) endpoints operating for critical ops while preventing any data mutation.
+     Esto mantiene los endpoints de lectura (GET) operativos para operaciones criticas mientras previene cualquier mutacion de datos.
 
-2. **Identify the root cause:**
-   - Check recent deployments or code changes that touched query logic
-   - Common causes:
-     - Missing `WHERE tenant_id = @tenantId` in a new or modified query
-     - RLS policy misconfiguration after a schema migration
-     - ORM / Dapper mapping issue that stripped the tenant parameter
-     - API endpoint that accepts `tenant_id` from the client instead of the JWT
-   - Review the application logs for queries executed without a tenant filter:
+2. **Identificar la causa raiz:**
+   - Verificar despliegues recientes o cambios de codigo que tocaron la logica de consultas
+   - Causas comunes:
+     - Falta `WHERE tenant_id = @tenantId` en una consulta nueva o modificada
+     - Mala configuracion de politica RLS despues de una migracion de esquema
+     - Problema de mapeo de ORM / Dapper que elimino el parametro de inquilino
+     - Endpoint de API que acepta `tenant_id` del cliente en lugar del JWT
+   - Revisar los logs de aplicacion en busca de consultas ejecutadas sin filtro de inquilino:
      ```bash
-     # Search for queries not containing tenant_id
-     # This is a heuristic — combine with code review
+     # Buscar consultas que no contengan tenant_id
+     # Esto es heuristico — combinar con revision de codigo
      ```
 
-3. **Determine exposure scope:**
-   - Export audit logs for the affected time window:
+3. **Determinar el alcance de la exposicion:**
+   - Exportar logs de auditoria para la ventana de tiempo afectada:
      ```sql
-     -- Export from audit_logs table (tenant-scoped queries only)
+     -- Exportar desde la tabla audit_logs (solo consultas con ambito de inquilino)
      COPY (
        SELECT timestamp, actor_id, tenant_id, action, request_path, 
               response_status
        FROM audit_logs
-       WHERE timestamp BETWEEN '<start>' AND '<end>'
+       WHERE timestamp BETWEEN '<inicio>' AND '<fin>'
          AND action IN ('query_users', 'get_user')
      ) TO '/tmp/exposure_audit.csv' CSV HEADER;
      ```
-   - Cross-reference access patterns: which tenants accessed which data?
-   - Determine if PII was returned in responses vs. just metadata
+   - Referencia cruzada de patrones de acceso: que inquilinos accedieron a que datos?
+   - Determinar si se devolvio PII en las respuestas vs. solo metadatos
 
-4. **Deploy the fix:**
-   - Commit the fix (missing `tenant_id` filter, RLS policy, or parameter mapping)
-   - Run integration tests with multi-tenant scenarios:
+4. **Desplegar la correccion:**
+   - Confirmar la correccion (falta de filtro `tenant_id`, politica RLS o mapeo de parametros)
+   - Ejecutar pruebas de integracion con escenarios multi-inquilino:
      ```bash
      dotnet test tests/UsersService.IntegrationTests/ \
        --filter "Category=MultiTenantIsolation"
      ```
-   - Deploy through the pipeline: `dev` -> `qa` -> `staging` -> `production`
-   - Do not skip environments — the security verification step is critical
+   - Desplegar a traves del pipeline: `dev` -> `qa` -> `staging` -> `production`
+   - No saltar entornos -- el paso de verificacion de seguridad es critico
 
-5. **Verify the fix:**
-   - Run the cross-tenant access test suite:
+5. **Verificar la correccion:**
+   - Ejecutar el conjunto de pruebas de acceso entre inquilinos:
      ```bash
-     # Test that Tenant A cannot access Tenant B's data
+     # Probar que el Inquilino A no puede acceder a los datos del Inquilino B
      curl -H "Authorization: Bearer $(jwt-for-tenant-a)" \
        https://users-service.platform/api/users/tenant-b-user-id
-     # Expected: 404 (not found) or 403 (forbidden)
-     # Must NOT return 200 with data
+     # Esperado: 404 (no encontrado) o 403 (prohibido)
+     # No debe devolver 200 con datos
      ```
-   - Verify RLS policies are active:
+   - Verificar que las politicas RLS esten activas:
      ```sql
      SELECT relname, relrowsecurity 
      FROM pg_class 
      WHERE relname IN ('users', 'audit_logs', 'roles');
-     -- relrowsecurity must be true for all
+     -- relrowsecurity debe ser true para todas
      ```
 
-6. **Post-resolution:**
-   - Remove the `disableWriteOperations` feature flag
-   - File a detailed security incident report per InfoSec requirements
-   - Schedule a PIR within 48 hours
+6. **Post-resolucion:**
+   - Eliminar el feature flag `disableWriteOperations`
+   - Registrar un informe detallado de incidente de seguridad segun los requisitos de InfoSec
+   - Programar una RPI dentro de las 48 horas
 
 ---
 
-## 6. Post-Incident Review
+## 6. Revision post-incidente
 
-Every SEV-1 and SEV-2 incident requires a Post-Incident Review (PIR) within 5 business days.
+Cada incidente SEV-1 y SEV-2 requiere una Revision Post-Incidente (RPI) dentro de los 5 dias habiles.
 
-### PIR Template
+### Plantilla de RPI
 
 ```markdown
-## Post-Incident Review — [Incident ID]
+## Revision Post-Incidente — [ID del incidente]
 
-**Date:** YYYY-MM-DD
-**Incident Commander:** [name]
-**Participants:** [list]
+**Fecha:** YYYY-MM-DD
+**Comandante de incidente:** [nombre]
+**Participantes:** [lista]
 
-### Summary
-[2-3 sentence description]
+### Resumen
+[descripcion de 2-3 oraciones]
 
-### Timeline
-| Timestamp (UTC) | Event |
+### Linea de tiempo
+| Marca de tiempo (UTC) | Evento |
 |---|---|
-| HH:MM | Alert fired |
-| HH:MM | Incident declared |
-| HH:MM | IC assigned |
-| HH:MM | Mitigation started |
-| HH:MM | Service restored |
-| HH:MM | Incident closed |
+| HH:MM | Alerta se disparo |
+| HH:MM | Incidente declarado |
+| HH:MM | CI asignado |
+| HH:MM | Mitigacion iniciada |
+| HH:MM | Servicio restaurado |
+| HH:MM | Incidente cerrado |
 
-### Impact
-- Duration: [X] min
-- Affected users/tenants: [count]
-- Data exposure: [none / scope]
-- Error budget consumed: [X]%
+### Impacto
+- Duracion: [X] min
+- Usuarios/inquilinos afectados: [cantidad]
+- Exposicion de datos: [ninguna / alcance]
+- Presupuesto de errores consumido: [X]%
 
-### Root Cause
-[one paragraph describing the why, not just the what]
+### Causa raiz
+[un parrafo describiendo el porque, no solo el que]
 
-### Contributing Factors
-- [Factor 1, e.g., missing unit test coverage]
-- [Factor 2, e.g., monitoring gap]
+### Factores contribuyentes
+- [Factor 1, ej., falta de cobertura de pruebas unitarias]
+- [Factor 2, ej., brecha de monitoreo]
 
-### Action Items
-| # | Action | Owner | Tracking Issue | Severity |
+### Elementos de accion
+| # | Accion | Propietario | Tarea de seguimiento | Severidad |
 |---|---|---|---|---|
-| 1 | [description] | @handle | [link] | P0/P1/P2 |
-| 2 | [description] | @handle | [link] | P0/P1/P2 |
+| 1 | [descripcion] | @handle | [enlace] | P0/P1/P2 |
+| 2 | [descripcion] | @handle | [enlace] | P0/P1/P2 |
 
-### Lessons Learned
-- What went well:
-- What went wrong:
-- What will we do differently:
+### Lecciones aprendidas
+- Que salio bien:
+- Que salio mal:
+- Que haremos diferente:
 
-### Appendix
-- [Link to Grafana dashboard snapshots]
-- [Link to PagerDuty incident]
-- [Link to Slack thread]
+### Apendice
+- [Enlace a capturas de dashboard de Grafana]
+- [Enlace a incidente de PagerDuty]
+- [Enlace a hilo de Slack]
 ```
 
-### Blameless Culture
+### Cultura sin culpa
 
-The PIR is a **blameless** process. Its purpose is to identify systemic improvements, not individual mistakes. Every incident is an opportunity to make the platform more resilient.
+La RPI es un proceso **sin culpa**. Su proposito es identificar mejoras sistemicas, no errores individuales. Cada incidente es una oportunidad para hacer la plataforma mas resiliente.
 
 ---
 
-## Related Documents
+## Documentos relacionados
 
-- [Architecture Overview](../architecture/overview.md)
-- [Security Architecture](../architecture/security.md) — threat model and JWT flow
-- [Deployment View](../architecture/deployment-view.md) — topology and health probes
-- [Events API](../api/events.md) — event processing guarantees and monitoring
-- [System Context](../architecture/context.md) — external dependencies
-- [Deployment Runbook](./deployment.md)
-- [Rollback Runbook](./rollback.md)
+- [Vision general de arquitectura](../architecture/overview.md)
+- [Arquitectura de seguridad](../architecture/security.md) — modelo de amenazas y flujo JWT
+- [Vista de despliegue](../architecture/deployment-view.md) — topologia y sondas de salud
+- [API de eventos](../api/events.md) — garantias de procesamiento de eventos y monitoreo
+- [Contexto del sistema](../architecture/context.md) — dependencias externas
+- [Runbook de despliegue](./deployment.md)
+- [Runbook de revertir](./rollback.md)

@@ -1,12 +1,12 @@
-# Security Architecture
+# Arquitectura de Seguridad
 
-## Scope
+## Alcance
 
-This document describes the **security architecture** of the Users Service — how it authenticates requests via the Authentication Service, its authorization model, data protection controls, and threat model.
+Este documento describe la **arquitectura de seguridad** del Users Service — cómo autentica las solicitudes a través del Authentication Service, su modelo de autorización, controles de protección de datos y modelo de amenazas.
 
-## Authentication Flow
+## Flujo de Autenticación
 
-The Users Service is a **JWT-consuming service**. It does not issue tokens. Every authenticated request must include a valid JWT issued by the Authentication Service.
+El Users Service es un **servicio consumidor de JWT**. No emite tokens. Cada solicitud autenticada debe incluir un JWT válido emitido por el Authentication Service.
 
 ```mermaid
 sequenceDiagram
@@ -15,75 +15,75 @@ sequenceDiagram
     participant Gateway as API Gateway
     participant UsersSvc as Users Service
     participant AuthSvc as Auth Service
-    participant Cache as JWKS Cache (Local)
+    participant Cache as Caché JWKS (Local)
     participant DB as PostgreSQL
 
-    Note over Client,DB: === Authenticated Request Flow ===
+    Note over Client,DB: === Flujo de Solicitud Autenticada ===
 
     Client->>Gateway: GET /api/users<br/>Authorization: Bearer <JWT>
-    Gateway->>Gateway: Validate JWT signature (edge)
-    Gateway->>UsersSvc: Forward request + JWT (mTLS)
+    Gateway->>Gateway: Validar firma JWT (borde)
+    Gateway->>UsersSvc: Reenviar solicitud + JWT (mTLS)
 
-    UsersSvc->>UsersSvc: Extract JWT from header
-    UsersSvc->>Cache: Check JWKS cache
-    alt Cache hit
-        Cache-->>UsersSvc: JWKS (public keys)
-        UsersSvc->>UsersSvc: Validate JWT locally
-    else Cache miss
+    UsersSvc->>UsersSvc: Extraer JWT del encabezado
+    UsersSvc->>Cache: Consultar caché JWKS
+    alt Caché disponible
+        Cache-->>UsersSvc: JWKS (claves públicas)
+        UsersSvc->>UsersSvc: Validar JWT localmente
+    else Caché no disponible
         UsersSvc->>AuthSvc: gRPC ValidateToken(JWT)
         AuthSvc-->>UsersSvc: { valid: true, claims: {...} }
-        UsersSvc->>Cache: Store JWKS (TTL 5 min)
+        UsersSvc->>Cache: Almacenar JWKS (TTL 5 min)
     end
 
-    alt JWT valid
-        UsersSvc->>UsersSvc: Extract claims (sub, roles, tid)
-        UsersSvc->>UsersSvc: RBAC check
-        UsersSvc->>DB: Query with tenant_id filter
-        DB-->>UsersSvc: Data
-        UsersSvc-->>Client: 200 OK + Response
-    else JWT invalid/expired
+    alt JWT válido
+        UsersSvc->>UsersSvc: Extraer claims (sub, roles, tid)
+        UsersSvc->>UsersSvc: Verificación RBAC
+        UsersSvc->>DB: Consultar con filtro tenant_id
+        DB-->>UsersSvc: Datos
+        UsersSvc-->>Client: 200 OK + Respuesta
+    else JWT inválido/expirado
         UsersSvc-->>Client: 401 Unauthorized
-    else Insufficient role
+    else Rol insuficiente
         UsersSvc-->>Client: 403 Forbidden
     end
 ```
 
-## Defense in Depth: Dual Validation
+## Defensa en Profundidad: Validación Dual
 
-JWT validation occurs at **two independent layers**:
+La validación JWT ocurre en **dos capas independientes**:
 
-| Layer | Validator | Purpose |
+| Capa | Validador | Propósito |
 |---|---|---|
-| **API Gateway** (Edge) | Envoy OAuth2 filter | First line of defense — rejects invalid tokens before they reach any service |
-| **Users Service** (Service) | Auth Service gRPC + local JWKS | Second line — zero-trust; the service never assumes the gateway has validated the token |
+| **API Gateway** (Borde) | Filtro Envoy OAuth2 | Primera línea de defensa — rechaza tokens inválidos antes de que lleguen a cualquier servicio |
+| **Users Service** (Servicio) | Auth Service gRPC + JWKS local | Segunda línea — confianza cero; el servicio nunca asume que el gateway ha validado el token |
 
-This dual validation ensures that even if the API Gateway is misconfigured or compromised, the Users Service independently verifies every token.
+Esta validación dual garantiza que incluso si el API Gateway está mal configurado o comprometido, el Users Service verifica cada token de forma independiente.
 
-## Authorization Model (RBAC)
+## Modelo de Autorización (RBAC)
 
-The Users Service implements **Role-Based Access Control** using claims from the JWT:
+El Users Service implementa **Control de Acceso Basado en Roles** utilizando claims del JWT:
 
 ```mermaid
 graph TD
-    subgraph "JWT Claims"
+    subgraph "Claims del JWT"
         sub["sub: user-uuid"]
         roles["roles: ['admin', 'developer']"]
         tid["tid: tenant-uuid"]
     end
 
-    subgraph "RBAC Rules"
-        admin["admin: Full access<br/>(CRUD all users in tenant)"]
-        operator["operator: Read + Update<br/>(read all, update limited fields)"]
-        user["user: Self-service<br/>(read self, update own profile)"]
+    subgraph "Reglas RBAC"
+        admin["admin: Acceso completo<br/>(CRUD todos los usuarios del tenant)"]
+        operator["operator: Lectura + Actualización<br/>(leer todos, actualizar campos limitados)"]
+        user["user: Autoservicio<br/>(leer propio, editar perfil propio)"]
     end
 
     roles --> admin
     roles --> operator
     roles --> user
 
-    subgraph "Resources"
-        all_users["All users (tenant-scoped)"]
-        own_profile["Own profile only"]
+    subgraph "Recursos"
+        all_users["Todos los usuarios (ámbito del tenant)"]
+        own_profile["Solo perfil propio"]
     end
 
     admin --> all_users
@@ -95,85 +95,85 @@ graph TD
     style tid fill:#e1f5fe
 ```
 
-**Role Matrix:**
+**Matriz de Roles:**
 
-| Action | `admin` | `operator` | `user` |
+| Acción | `admin` | `operator` | `user` |
 |---|---|---|---|
-| List all users | ✅ | ✅ | ❌ |
-| Get any user | ✅ | ✅ | ❌ |
-| Get own profile | ✅ | ✅ | ✅ |
-| Create user | ✅ | ❌ | ❌ |
-| Update any user | ✅ | ❌ | ❌ |
-| Update own profile | ✅ | ✅ | ✅ (limited fields) |
-| Delete user | ✅ | ❌ | ❌ |
+| Listar todos los usuarios | ✅ | ✅ | ❌ |
+| Obtener cualquier usuario | ✅ | ✅ | ❌ |
+| Obtener perfil propio | ✅ | ✅ | ✅ |
+| Crear usuario | ✅ | ❌ | ❌ |
+| Actualizar cualquier usuario | ✅ | ❌ | ❌ |
+| Actualizar perfil propio | ✅ | ✅ | ✅ (campos limitados) |
+| Eliminar usuario | ✅ | ❌ | ❌ |
 
-## Tenancy Isolation
+## Aislamiento de Tenant
 
-The platform is **multi-tenant**. Every query is scoped to the `tenant_id` extracted from the JWT:
+La plataforma es **multi-tenant**. Cada consulta está limitada al `tenant_id` extraído del JWT:
 
 ```sql
--- All queries include tenant_id filter
+-- Todas las consultas incluyen filtro tenant_id
 SELECT * FROM users WHERE tenant_id = @tenantId AND id = @userId;
 
--- Row-Level Security (RLS) as defense-in-depth
+-- Seguridad a Nivel de Fila (RLS) como defensa en profundidad
 CREATE POLICY tenant_isolation ON users
     USING (tenant_id = current_setting('app.current_tenant_id')::UUID);
 ```
 
-**Tenant ID source:** The `tid` claim in the JWT, set by the Auth Service at login time. It CANNOT be overridden by the client.
+**Origen del Tenant ID:** El claim `tid` en el JWT, establecido por el Auth Service al iniciar sesión. NO puede ser sobrescrito por el cliente.
 
-## Threat Model Summary
+## Resumen del Modelo de Amenazas
 
-| # | Threat | Category | Severity | Mitigation |
+| # | Amenaza | Categoría | Severidad | Mitigación |
 |---|---|---|---|---|
-| T1 | Unauthorized user data access | Elevation of Privilege | **Critical** | Dual JWT validation, RLS on database, RBAC per endpoint |
-| T2 | Cross-tenant data leakage | Information Disclosure | **Critical** | `tenant_id` on every query, RLS policies, integration tests per tenant |
-| T3 | JWT replay attack | Spoofing | **Low** | Short TTL (15 min), JWT ID (`jti`) check via Auth Service |
-| T4 | SQL injection | Tampering | **Medium** | Parameterized queries (Dapper), input validation (FluentValidation) |
-| T5 | Mass assignment (overposting) | Tampering | **Medium** | DTO validation — only whitelisted fields are accepted in requests |
-| T6 | Enumeration of users | Information Disclosure | **Medium** | Consistent 404 for non-existent and unauthorized users; rate limiting |
-| T7 | Stale data after soft-delete | Information Disclosure | **Low** | All queries default to `WHERE deleted_at IS NULL` |
-| T8 | Auth Service impersonation | Spoofing | **High** | mTLS for gRPC; only Auth Service's certificate is trusted |
-| T9 | Event injection on Service Bus | Tampering | **High** | Event schema validation; deduplication by `eventId` |
-| T10 | Privilege escalation via role editing | Elevation of Privilege | **High** | Role field change requires `admin` role; audited |
+| T1 | Acceso no autorizado a datos de usuario | Elevación de Privilegio | **Crítica** | Validación JWT dual, RLS en la base de datos, RBAC por endpoint |
+| T2 | Fuga de datos entre tenants | Divulgación de Información | **Crítica** | `tenant_id` en cada consulta, políticas RLS, pruebas de integración por tenant |
+| T3 | Ataque de repetición de JWT | Suplantación | **Baja** | TTL corto (15 min), verificación de JWT ID (`jti`) mediante Auth Service |
+| T4 | Inyección SQL | Manipulación | **Media** | Consultas parametrizadas (Dapper), validación de entrada (FluentValidation) |
+| T5 | Asignación masiva (overposting) | Manipulación | **Media** | Validación de DTO — solo los campos permitidos son aceptados en las solicitudes |
+| T6 | Enumeración de usuarios | Divulgación de Información | **Media** | 404 consistente para usuarios inexistentes y no autorizados; limitación de tasa |
+| T7 | Datos obsoletos después de soft-delete | Divulgación de Información | **Baja** | Todas las consultas por defecto incluyen `WHERE deleted_at IS NULL` |
+| T8 | Suplantación del Auth Service | Suplantación | **Alta** | mTLS para gRPC; solo se confía en el certificado del Auth Service |
+| T9 | Inyección de eventos en Service Bus | Manipulación | **Alta** | Validación de esquema de eventos; deduplicación por `eventId` |
+| T10 | Escalada de privilegios mediante edición de roles | Elevación de Privilegio | **Alta** | El cambio del campo de rol requiere rol `admin`; auditado |
 
-## Data Protection
+## Protección de Datos
 
-| Data | Storage | Protection |
+| Dato | Almacenamiento | Protección |
 |---|---|---|
-| User profiles | PostgreSQL | Encryption at rest (AES-256), TLS 1.3 in transit |
-| PII (email, name) | PostgreSQL | Encrypted at rest; field-level encryption planned for GDPR compliance |
-| Audit logs | PostgreSQL + Elasticsearch | Immutable append-only; encrypted at rest |
-| JWT (in transit) | HTTP headers | TLS 1.3; never logged |
-| Database credentials | Azure Key Vault | Managed Identity + RBAC |
+| Perfiles de usuario | PostgreSQL | Cifrado en reposo (AES-256), TLS 1.3 en tránsito |
+| PII (correo electrónico, nombre) | PostgreSQL | Cifrado en reposo; cifrado a nivel de campo planificado para cumplimiento GDPR |
+| Registros de auditoría | PostgreSQL + Elasticsearch | Solo anexión, inmutable; cifrado en reposo |
+| JWT (en tránsito) | Encabezados HTTP | TLS 1.3; nunca se registran |
+| Credenciales de base de datos | Azure Key Vault | Managed Identity + RBAC |
 
-## PII Handling
+## Manejo de PII
 
-The Users Service processes Personally Identifiable Information (PII):
+El Users Service procesa Información de Identificación Personal (PII):
 
-| Field | PII Level | Retention | Deletion |
+| Campo | Nivel de PII | Retención | Eliminación |
 |---|---|---|---|
-| `email` | **High** | Active account + 30 days post-deletion | Anonymized by nightly cleanup job |
-| `display_name` | **Medium** | Active account + 30 days post-deletion | Anonymized |
-| `username` | **Low** | Active account + 30 days post-deletion | Anonymized |
-| IP addresses (audit) | **Medium** | 90 days | Automatic purge via partition rotation |
-| `department`, `job_title` | **Low** | Retained for org chart history | Retained |
+| `email` | **Alto** | Cuenta activa + 30 días después de la eliminación | Anonimizado por trabajo de limpieza nocturno |
+| `display_name` | **Medio** | Cuenta activa + 30 días después de la eliminación | Anonimizado |
+| `username` | **Bajo** | Cuenta activa + 30 días después de la eliminación | Anonimizado |
+| Direcciones IP (auditoría) | **Medio** | 90 días | Purga automática mediante rotación de particiones |
+| `department`, `job_title` | **Bajo** | Retenido para historial de organigrama | Retenido |
 
-**GDPR Compliance:**
-- Data export API: `GET /api/users/{id}/export` (returns all user data in JSON)
-- Data deletion API: `POST /api/users/{id}/purge` (hard-delete + anonymize audit trail)
-- Both require `admin` role + additional approval workflow (planned)
+**Cumplimiento GDPR:**
+- API de exportación de datos: `GET /api/users/{id}/export` (devuelve todos los datos del usuario en JSON)
+- API de eliminación de datos: `POST /api/users/{id}/purge` (eliminación física + anonimización del registro de auditoría)
+- Ambas requieren rol `admin` + flujo de aprobación adicional (planificado)
 
-## Incident Response
+## Respuesta a Incidentes
 
-See [Incident Response Runbook](../runbooks/incident-response.md).
+Ver [Runbook de Respuesta a Incidentes](../runbooks/incident-response.md).
 
-**Security contact:** `infosec@internal.platform` / Slack: `#infosec`
+**Contacto de seguridad:** `infosec@internal.platform` / Slack: `#infosec`
 
-## Related Documents
+## Documentos Relacionados
 
-- [Architecture Overview](overview.md)
-- [Component View](components.md)
-- [Users API](../api/users-api.md)
-- [Security Guidelines](../decisions/security-guidelines.md)
-- [ADR-002 — JWT Validation at Gateway vs. Service Level](../adr/ADR-002.md)
+- [Visión General de la Arquitectura](overview.md)
+- [Vista de Componentes](components.md)
+- [API de Usuarios](../api/users-api.md)
+- [Directrices de Seguridad](../decisions/security-guidelines.md)
+- [ADR-002 — Validación JWT a Nivel de Gateway vs. Servicio](../adr/ADR-002.md)

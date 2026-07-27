@@ -1,222 +1,222 @@
-# How to Debug — Users Service
+# Cómo Depurar — Users Service
 
-**Service:** `users-service` | **Domain:** `identity` | **Owner:** Platform Engineering Team | **Last Updated:** 2026-07-26
+**Servicio:** `users-service` | **Dominio:** `identity` | **Propietario:** Equipo de Ingeniería de Plataforma | **Última Actualización:** 2026-07-26
 
-## Table of Contents
+## Tabla de Contenidos
 
-1. [Introduction](#1-introduction)
-2. [Prerequisites](#2-prerequisites)
-3. [Debugging JWT Validation Failures](#3-debugging-jwt-validation-failures)
-4. [Tracing Requests Across Services](#4-tracing-requests-across-services)
-5. [Debugging Event Consumer Issues](#5-debugging-event-consumer-issues)
-6. [Common Errors and Resolutions](#6-common-errors-and-resolutions)
-7. [VS Code Debugging Setup](#7-vs-code-debugging-setup)
-8. [Diagnostic Commands Reference](#8-diagnostic-commands-reference)
-9. [Related Documents](#9-related-documents)
-
----
-
-## 1. Introduction
-
-This guide covers debugging techniques for the Users Service. It is aimed at platform engineers, on-call SREs, and developers working on the service.
-
-The Users Service has three primary runtime surfaces that produce distinct failure modes:
-
-| Surface | Failure Mode | Typical Symptoms |
-|---|---|---|
-| **JWT validation** | Every authenticated request requires a valid JWT. If validation fails, the service returns 401 or falls back to a degraded state. | `401 Unauthorized`, `503 Service Unavailable`, `users_jwt_validation_errors_total` spiking |
-| **Request processing** | User CRUD operations, RBAC checks, database queries, and internal service calls (gRPC, Service Bus). | `500 Internal Server Error`, slow p99 latency, `NpgsqlException`, timeouts |
-| **Event consumption** | Background processing of auth events (`user.login`, `user.logout`, `token.revoked`) from Azure Service Bus. | Stale `last_login_at` timestamps, `users_event_processing_lag_seconds` alert, dead-letter queue growth |
-
-Start with the surface that matches the symptoms, then use the diagnostic commands in [Section 8](#8-diagnostic-commands-reference) to drill in.
+1. [Introducción](#1-introducción)
+2. [Requisitos Previos](#2-requisitos-previos)
+3. [Depuración de Fallos en Validación JWT](#3-depuración-de-fallos-en-validación-jwt)
+4. [Rastreo de Solicitudes entre Servicios](#4-rastreo-de-solicitudes-entre-servicios)
+5. [Depuración de Problemas del Consumidor de Eventos](#5-depuración-de-problemas-del-consumidor-de-eventos)
+6. [Errores Comunes y Resoluciones](#6-errores-comunes-y-resoluciones)
+7. [Configuración de Depuración en VS Code](#7-configuración-de-depuración-en-vs-code)
+8. [Referencia de Comandos de Diagnóstico](#8-referencia-de-comandos-de-diagnóstico)
+9. [Documentos Relacionados](#9-documentos-relacionados)
 
 ---
 
-## 2. Prerequisites
+## 1. Introducción
 
-### 2.1 Required Tools
+Esta guía cubre las técnicas de depuración para el Users Service. Está dirigida a ingenieros de plataforma, SREs de guardia y desarrolladores que trabajan en el servicio.
 
-| Tool | Purpose | Verification |
+El Users Service tiene tres superficies de ejecución principales que producen modos de falla distintos:
+
+| Superficie | Modo de Falla | Síntomas Típicos |
 |---|---|---|
-| .NET 10 SDK | Build, run, and debug locally | `dotnet --version` should show `10.0.100+` |
-| VS Code (or Rider/VS) | Breakpoint debugging, launch configs | — |
-| `curl` / `httpie` | Manual API testing | `curl --version` |
-| `jq` | JSON parsing from command line | `jq --version` |
-| `kubectl` | Cluster operations (staging/prod) | `kubectl version --short` |
-| `grpcurl` | gRPC introspection for Auth Service | `grpcurl --version` |
+| **Validación JWT** | Cada solicitud autenticada requiere un JWT válido. Si la validación falla, el servicio devuelve 401 o recurre a un estado degradado. | `401 Unauthorized`, `503 Service Unavailable`, pico en `users_jwt_validation_errors_total` |
+| **Procesamiento de solicitudes** | Operaciones CRUD de usuarios, verificaciones RBAC, consultas a la base de datos y llamadas a servicios internos (gRPC, Service Bus). | `500 Internal Server Error`, latencia p99 lenta, `NpgsqlException`, timeouts |
+| **Consumo de eventos** | Procesamiento en segundo plano de eventos de autenticación (`user.login`, `user.logout`, `token.revoked`) desde Azure Service Bus. | Marcas de tiempo `last_login_at` desactualizadas, alerta `users_event_processing_lag_seconds`, crecimiento de la cola de mensajes fallidos |
+
+Comienza con la superficie que coincida con los síntomas, luego usa los comandos de diagnóstico en [Sección 8](#8-referencia-de-comandos-de-diagnóstico) para profundizar.
+
+---
+
+## 2. Requisitos Previos
+
+### 2.1 Herramientas Requeridas
+
+| Herramienta | Propósito | Verificación |
+|---|---|---|
+| .NET 10 SDK | Compilar, ejecutar y depurar localmente | `dotnet --version` debe mostrar `10.0.100+` |
+| VS Code (o Rider/VS) | Depuración con puntos de interrupción, configuraciones de inicio | — |
+| `curl` / `httpie` | Pruebas manuales de API | `curl --version` |
+| `jq` | Análisis JSON desde la línea de comandos | `jq --version` |
+| `kubectl` | Operaciones de clúster (staging/producción) | `kubectl version --short` |
+| `grpcurl` | Introspección gRPC para Auth Service | `grpcurl --version` |
 | Azure CLI | Service Bus, Key Vault, App Configuration | `az version` |
-| `jwt-cli` or `jwt.ms` | Decode JWT payloads without validation | `npm install -g jwt-cli` or visit `https://jwt.ms` |
+| `jwt-cli` o `jwt.ms` | Decodificar cargas útiles JWT sin validación | `npm install -g jwt-cli` o visita `https://jwt.ms` |
 
-### 2.2 Environment-Specific Configuration
+### 2.2 Configuración Específica del Entorno
 
-| Setting | Local (Development) | Production |
+| Configuración | Local (Desarrollo) | Producción |
 |---|---|---|
-| Auth Issuer | `https://localhost:7103` | `https://auth.internal.platform` |
-| Auth Audience | `users-service-dev` | `users-service` |
-| Auth gRPC Endpoint | `https://localhost:5103` | `https://auth-service.platform.svc.cluster.local:5103` |
-| JWKS Cache TTL | 1 minute | 5 minutes |
-| Log Level | `Debug` | `Information` |
+| Emisor de Auth | `https://localhost:7103` | `https://auth.internal.platform` |
+| Audiencia de Auth | `users-service-dev` | `users-service` |
+| Endpoint gRPC de Auth | `https://localhost:5103` | `https://auth-service.platform.svc.cluster.local:5103` |
+| TTL de Caché JWKS | 1 minuto | 5 minutos |
+| Nivel de Registro | `Debug` | `Information` |
 
-These values are set in [`appsettings.Development.json`](../../src/UsersService/appsettings.Development.json) and [`appsettings.json`](../../src/UsersService/appsettings.json).
+Estos valores se establecen en [`appsettings.Development.json`](../../src/UsersService/appsettings.Development.json) y [`appsettings.json`](../../src/UsersService/appsettings.json).
 
 ---
 
-## 3. Debugging JWT Validation Failures
+## 3. Depuración de Fallos en Validación JWT
 
-### 3.1 Understanding the Validation Pipeline
+### 3.1 Entendiendo el Pipeline de Validación
 
-The Users Service validates JWT tokens at **two layers** (defense in depth):
+El Users Service valida los tokens JWT en **dos capas** (defensa en profundidad):
 
 ```
-Client → API Gateway (edge validation) → Users Service (service-level validation)
-                                              │
-                                              ├─ Check JWKS cache (local, in-memory)
-                                              │    ├─ Hit  → validate RS256 signature locally
-                                              │    └─ Miss → gRPC call to Auth Service
-                                              │               └─ On success → populate cache
-                                              │
-                                              ├─ Extract claims: sub, roles, tid
-                                              ├─ Enforce RBAC: is role allowed for this endpoint?
-                                              └─ Execute query (scoped to tenant_id from JWT)
+Cliente → API Gateway (validación perimetral) → Users Service (validación a nivel de servicio)
+                                                      │
+                                                      ├─ Verificar caché JWKS (local, en memoria)
+                                                      │    ├─ Acierto → validar firma RS256 localmente
+                                                      │    └─ Fallo → llamada gRPC al Auth Service
+                                                      │               └─ En éxito → poblar caché
+                                                      │
+                                                      ├─ Extraer claims: sub, roles, tid
+                                                      ├─ Aplicar RBAC: ¿el rol está permitido para este endpoint?
+                                                      └─ Ejecutar consulta (con alcance de tenant_id del JWT)
 ```
 
-The JWKS cache is the critical resilience mechanism. When the Auth Service is unreachable, the cache keeps the service operational for its configured TTL (5 minutes in production, 1 minute in development).
+La caché JWKS es el mecanismo crítico de resiliencia. Cuando el Auth Service no está accesible, la caché mantiene el servicio operativo durante su TTL configurado (5 minutos en producción, 1 minuto en desarrollo).
 
-### 3.2 Common JWT Validation Failures
+### 3.2 Fallos Comunes de Validación JWT
 
-#### 3.2.1 Expired Token
+#### 3.2.1 Token Expirado
 
-**Symptom:** `401 Unauthorized` with detail containing `"token has expired"` or `"SecurityTokenExpiredException"`.
+**Síntoma:** `401 Unauthorized` con detalle que contiene `"token has expired"` o `"SecurityTokenExpiredException"`.
 
-The access token has a 15-minute lifetime (configurable via `Auth:AccessTokenLifetimeMinutes` in the Auth Service). The client must refresh using the refresh token before expiry.
+El token de acceso tiene una duración de 15 minutos (configurable mediante `Auth:AccessTokenLifetimeMinutes` en el Auth Service). El cliente debe actualizarlo usando el token de actualización antes de que expire.
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```bash
-# Decode the token to check exp claim (no signature validation)
+# Decodificar el token para verificar la claim exp (sin validación de firma)
 jwt decode <token>
 
-# Look for:
+# Buscar:
 # {
 #   "exp": 1690000000,
 #   ...
 # }
-# Compare to: date -d @1690000000
+# Comparar con: date -d @1690000000
 ```
 
-**Resolution:** The client must call `POST /api/auth/refresh` with a valid refresh token to obtain a new access token.
+**Resolución:** El cliente debe llamar a `POST /api/auth/refresh` con un token de actualización válido para obtener un nuevo token de acceso.
 
-#### 3.2.2 Wrong Issuer or Audience
+#### 3.2.2 Emisor o Audiencia Incorrectos
 
-**Symptom:** `401 Unauthorized` with `"IDX10205: Issuer validation failed"` or `"IDX10214: Audience validation failed"`.
+**Síntoma:** `401 Unauthorized` con `"IDX10205: Issuer validation failed"` o `"IDX10214: Audience validation failed"`.
 
-The service validates that `iss` matches `Auth:Issuer` and `aud` matches `Auth:Audience`. This is a common misconfiguration when pointing to the wrong environment.
+El servicio valida que `iss` coincida con `Auth:Issuer` y `aud` coincida con `Auth:Audience`. Esto es una mala configuración común cuando se apunta al entorno incorrecto.
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```bash
-# Decode the token
+# Decodificar el token
 jwt decode <token>
 
-# Compare against expected values:
-#   Issuer:   https://auth.internal.platform (or https://localhost:7103 for dev)
-#   Audience: users-service (or users-service-dev for dev)
+# Comparar contra los valores esperados:
+#   Issuer:   https://auth.internal.platform (o https://localhost:7103 para desarrollo)
+#   Audience: users-service (o users-service-dev para desarrollo)
 ```
 
-**Check what the service expects:**
+**Verificar lo que el servicio espera:**
 
 ```bash
-# From appsettings.json
+# Desde appsettings.json
 cat src/UsersService/appsettings.json | jq '.Auth'
 
-# Or via the health endpoint (if exposed)
+# O mediante el endpoint de salud (si está expuesto)
 curl -s https://users-service.platform/api/health/ready | jq '.'
 ```
 
-**Resolution:** Ensure the token was issued by the same Auth Service instance the Users Service is configured to trust. In development, both services must use consistent values. In production, verify the environment variables `Auth__Issuer` and `Auth__Audience` on the pod:
+**Resolución:** Asegúrate de que el token fue emitido por la misma instancia del Auth Service en la que el Users Service está configurado para confiar. En desarrollo, ambos servicios deben usar valores coherentes. En producción, verifica las variables de entorno `Auth__Issuer` y `Auth__Audience` en el pod:
 
 ```bash
 kubectl exec deploy/users-service -n platform -- env | grep Auth__
 ```
 
-#### 3.2.3 Invalid Signature
+#### 3.2.3 Firma Inválida
 
-**Symptom:** `401 Unauthorized` with `"IDX10503: Signature validation failed"` or `"IDX10501: Signature validation failed. Unable to match key"`.
+**Síntoma:** `401 Unauthorized` con `"IDX10503: Signature validation failed"` o `"IDX10501: Signature validation failed. Unable to match key"`.
 
-The token was signed with a key that the service does not recognize. Common causes:
+El token fue firmado con una clave que el servicio no reconoce. Causas comunes:
 
-- The Auth Service rotated its signing key, but the service is using a stale JWKS cache.
-- The token is from a different Auth Service instance (e.g., staging vs. production).
-- The token is a self-signed test token that was never issued by Auth Service.
+- El Auth Service rotó su clave de firma, pero el servicio está usando una caché JWKS desactualizada.
+- El token proviene de una instancia diferente del Auth Service (ej., staging vs. producción).
+- El token es un token de prueba autofirmado que nunca fue emitido por el Auth Service.
 
-**Diagnosis -- Fetch the expected public key:**
+**Diagnóstico -- Obtener la clave pública esperada:**
 
 ```bash
-# Fetch the JWKS from the Auth Service
+# Obtener el JWKS del Auth Service
 curl -s https://auth.internal.platform/.well-known/jwks.json | jq '.'
 
-# Compare the 'kid' in the token header with the 'kid' in the JWKS
-jwt decode <token>   # Look at header.kid
+# Comparar el 'kid' en la cabecera del token con el 'kid' en el JWKS
+jwt decode <token>   # Revisar header.kid
 ```
 
-**Check the JWKS cache age in the Users Service:**
+**Verificar la antigüedad de la caché JWKS en el Users Service:**
 
 ```bash
-# Prometheus metric
+# Métrica de Prometheus
 curl -s http://localhost:7201/metrics | grep users_jwks_cache_age_seconds
 ```
 
-If the cache is older than the configured TTL and the Auth Service is unreachable, the cache is stale.
+Si la caché es más antigua que el TTL configurado y el Auth Service no está accesible, la caché está desactualizada.
 
-**Resolution:**
+**Resolución:**
 
-1. Verify the Auth Service is healthy and its JWKS endpoint is reachable.
-2. If the key was legitimately rotated, the cache will refresh on the next successful gRPC call to Auth Service (within the TTL).
-3. In an emergency, you can force a cache clear by restarting the Users Service pods:
+1. Verifica que el Auth Service esté saludable y que su endpoint JWKS sea accesible.
+2. Si la clave fue rotada legítimamente, la caché se actualizará en la próxima llamada gRPC exitosa al Auth Service (dentro del TTL).
+3. En una emergencia, puedes forzar la limpieza de la caché reiniciando los pods del Users Service:
 
 ```bash
 kubectl rollout restart deployment/users-service -n platform
 ```
 
-#### 3.2.4 Revoked Token (JTI Blacklist)
+#### 3.2.4 Token Revocado (Lista Negra JTI)
 
-**Symptom:** `401 Unauthorized` with `"Token has been revoked"`.
+**Síntoma:** `401 Unauthorized` con `"Token has been revoked"`.
 
-The token's `jti` (JWT ID) has been added to the blacklist via the logout or token refresh flow.
+El `jti` (ID del JWT) del token ha sido agregado a la lista negra mediante el flujo de cierre de sesión o actualización de token.
 
-**Diagnosis:** This is intentional. The token was either explicitly revoked via logout, or a refresh token rotation detected a replay attack and revoked the entire token family.
+**Diagnóstico:** Esto es intencional. El token fue explícitamente revocado mediante un cierre de sesión, o una rotación de token de actualización detectó un ataque de repetición y revocó toda la familia de tokens.
 
-**Resolution:** The client must obtain a new token by logging in again.
+**Resolución:** El cliente debe obtener un nuevo token iniciando sesión nuevamente.
 
-#### 3.2.5 Missing or Malformed Claims
+#### 3.2.5 Claims Faltantes o Mal Formadas
 
-**Symptom:** `401 Unauthorized` or `403 Forbidden` with `"Missing required claim"` or `"Invalid claim format"`.
+**Síntoma:** `401 Unauthorized` o `403 Forbidden` con `"Missing required claim"` o `"Invalid claim format"`.
 
-**Diagnosis -- Inspect the claims:**
+**Diagnóstico -- Inspeccionar las claims:**
 
 ```bash
 jwt decode <token> | jq '.payload'
 
-# Expected claims:
-# - sub:  user UUID (required)
-# - roles: array of strings (required for RBAC)
-# - tid:  tenant UUID (required for tenancy)
-# - jti:  token ID (required for revocation check)
+# Claims esperadas:
+# - sub:  UUID del usuario (requerido)
+# - roles: arreglo de cadenas (requerido para RBAC)
+# - tid:  UUID del tenant (requerido para tenencia)
+# - jti:  ID del token (requerido para verificación de revocación)
 ```
 
-**Resolution:** Ensure the Auth Service is configured to include all required claims in the JWT. See the `TokenService.IssueTokensAsync()` implementation in the Auth Service for the exact claim set.
+**Resolución:** Asegúrate de que el Auth Service esté configurado para incluir todas las claims requeridas en el JWT. Consulta la implementación de `TokenService.IssueTokensAsync()` en el Auth Service para ver el conjunto exacto de claims.
 
-### 3.3 JWT Validation Log Analysis
+### 3.3 Análisis de Registros de Validación JWT
 
-Search the application logs for JWT-related events:
+Busca en los registros de la aplicación eventos relacionados con JWT:
 
 ```bash
-# Structured log query (Elasticsearch)
-# Search for JWT validation failures
+# Consulta de registro estructurado (Elasticsearch)
+# Buscar fallos de validación JWT
 index: "logs-platform-*"
 "users_jwt_validation_errors_total"
 
-# Common log messages to grep for:
+# Mensajes de registro comunes para buscar:
 # - "Token validation failed: ..."
 # - "JWT expired"
 # - "IDX10205: Issuer validation failed"
@@ -224,54 +224,54 @@ index: "logs-platform-*"
 # - "AuthServiceClient: gRPC call failed, falling back to JWKS cache"
 # - "JWKS cache miss, calling Auth Service..."
 
-# Local development logs
+# Registros de desarrollo local
 dotnet run --project src/UsersService 2>&1 | grep -i jwt
 ```
 
-### 3.4 Quick JWT Validation Test
+### 3.4 Prueba Rápida de Validación JWT
 
-Use the Auth Service's test credentials to verify end-to-end JWT validation:
+Usa las credenciales de prueba del Auth Service para verificar la validación JWT de extremo a extremo:
 
 ```bash
-# 1. Login to get a token (local development)
+# 1. Iniciar sesión para obtener un token (desarrollo local)
 TOKEN=$(curl -s -X POST https://localhost:5103/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "Platform@2026!"}' | jq -r '.accessToken')
 
-# 2. Test the token against Users Service
+# 2. Probar el token contra el Users Service
 curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $TOKEN" \
   https://localhost:7201/api/users
 
-# Expected: 200
+# Esperado: 200
 
-# 3. Test with an expired/invalid token
+# 3. Probar con un token expirado/inválido
 curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer invalid-token" \
+  -H "Authorization: Bearer token-invalido" \
   https://localhost:7201/api/users
 
-# Expected: 401
+# Esperado: 401
 ```
 
 ---
 
-## 4. Tracing Requests Across Services
+## 4. Rastreo de Solicitudes entre Servicios
 
-### 4.1 Distributed Tracing with OpenTelemetry
+### 4.1 Rastreo Distribuido con OpenTelemetry
 
-Every request to the Users Service carries a W3C Trace Context (`traceparent` header). This allows correlating a single user request across the API Gateway, Users Service, Auth Service, PostgreSQL, and Service Bus.
+Cada solicitud al Users Service lleva un Contexto de Rastro W3C (cabecera `traceparent`). Esto permite correlacionar una sola solicitud de usuario a través de la API Gateway, Users Service, Auth Service, PostgreSQL y Service Bus.
 
-**Trace context format:**
+**Formato del contexto de rastro:**
 
 ```
 traceparent: 00-<trace-id>-<span-id>-01
 ```
 
-### 4.2 Reading Trace IDs in Logs
+### 4.2 Lectura de IDs de Rastro en Registros
 
-The Users Service emits structured JSON logs with the correlation ID automatically enriched by Serilog's `Enrich.FromLogContext()`.
+El Users Service emite registros JSON estructurados con el ID de correlación enriquecido automáticamente por `Enrich.FromLogContext()` de Serilog.
 
-**Example log line:**
+**Ejemplo de línea de registro:**
 
 ```json
 {
@@ -291,30 +291,30 @@ The Users Service emits structured JSON logs with the correlation ID automatical
 }
 ```
 
-### 4.3 Correlating Across Services
+### 4.3 Correlación entre Servicios
 
-When a request flows from Users Service to Auth Service (gRPC validation), the trace context propagates automatically via the OpenTelemetry gRPC instrumentation.
+Cuando una solicitud fluye del Users Service al Auth Service (validación gRPC), el contexto de rastro se propaga automáticamente mediante la instrumentación gRPC de OpenTelemetry.
 
-**Steps to correlate:**
+**Pasos para correlacionar:**
 
-1. Capture the `TraceId` from a Users Service error log entry.
-2. Search the Auth Service logs for the same `TraceId`:
+1. Captura el `TraceId` de una entrada de registro de error del Users Service.
+2. Busca en los registros del Auth Service el mismo `TraceId`:
 
 ```bash
-# Elasticsearch query
+# Consulta en Elasticsearch
 index: "logs-platform-auth-*"
 "TraceId": "00-abcdef1234567890abcdef1234567890-*"
 ```
 
-3. If the trace is sampled (10% sampling in production), view it in the OpenTelemetry collector or Grafana Tempo:
+3. Si el rastro está muestreado (10% de muestreo en producción), visualízalo en el colector de OpenTelemetry o Grafana Tempo:
 
 ```
 https://grafana.internal/explore?traceId=abcdef1234567890abcdef1234567890
 ```
 
-### 4.4 Adding Custom Span Attributes
+### 4.4 Agregar Atributos de Span Personalizados
 
-When adding instrumentation to new code paths, use `ActivitySource` to create spans:
+Al agregar instrumentación a nuevas rutas de código, usa `ActivitySource` para crear spans:
 
 ```csharp
 using System.Diagnostics;
@@ -329,16 +329,16 @@ public class UserService
         activity?.SetTag("tenant_id", tenantId.ToString());
         activity?.SetTag("username", request.Username);
 
-        // ... method body ...
+        // ... cuerpo del método ...
     }
 }
 ```
 
-Tags set on the activity appear in Grafana Tempo / Jaeger and make filtering by tenant or user possible.
+Las etiquetas establecidas en la actividad aparecen en Grafana Tempo / Jaeger y permiten filtrar por tenant o usuario.
 
-### 4.5 Manual Trace ID Propagation
+### 4.5 Propagación Manual del ID de Rastro
 
-When debugging locally without a trace backend, you can inject your own `traceparent` header:
+Al depurar localmente sin un backend de rastreo, puedes inyectar tu propia cabecera `traceparent`:
 
 ```bash
 curl -H "traceparent: 00-debug1234567890abcdef1234567890001-debugspan0000000001-01" \
@@ -346,71 +346,71 @@ curl -H "traceparent: 00-debug1234567890abcdef1234567890001-debugspan0000000001-
   https://localhost:7201/api/users
 ```
 
-Search the service logs for `TraceId` containing `"debug1234567890abcdef1234567890001"` to isolate your request's logs.
+Busca en los registros del servicio `TraceId` que contenga `"debug1234567890abcdef1234567890001"` para aislar los registros de tu solicitud.
 
 ---
 
-## 5. Debugging Event Consumer Issues
+## 5. Depuración de Problemas del Consumidor de Eventos
 
-The Event Consumer is a `BackgroundService` that subscribes to `auth-events` topic on Azure Service Bus. It processes `user.login`, `user.logout`, and `token.revoked` events.
+El Consumidor de Eventos es un `BackgroundService` que se suscribe al tópico `auth-events` en Azure Service Bus. Procesa eventos `user.login`, `user.logout` y `token.revoked`.
 
-### 5.1 Architecture of the Event Consumer
+### 5.1 Arquitectura del Consumidor de Eventos
 
 ```
-Azure Service Bus (auth-events topic)
+Azure Service Bus (tópico auth-events)
     │
-    ├─ Session-enabled subscription (session ID = userId)
-    │  ├─ In-order delivery per user
-    │  └─ Max 10 concurrent handlers per pod
+    ├─ Suscripción habilitada para sesiones (ID de sesión = userId)
+    │  ├─ Entrega en orden por usuario
+    │  └─ Máximo 10 manejadores concurrentes por pod
     │
     ▼
 Users Service: EventConsumer (BackgroundService)
     │
-    ├─ Deserialize event envelope
-    ├─ Check deduplication table (event_deduplication)
-    │    ├─ Already processed → complete message (no-op)
-    │    └─ New event → process
+    ├─ Deserializar sobre del evento
+    ├─ Verificar tabla de deduplicación (event_deduplication)
+    │    ├─ Ya procesado → completar mensaje (sin operación)
+    │    └─ Evento nuevo → procesar
     │
-    ├─ Process event:
+    ├─ Procesar evento:
     │    ├─ user.login  → UPDATE last_login_at
     │    ├─ user.logout → UPDATE last_logout_at
     │    └─ token.revoked → INSERT INTO token_revocations
     │
-    ├─ Record in deduplication table
-    └─ Complete message on Service Bus
+    ├─ Registrar en tabla de deduplicación
+    └─ Completar mensaje en Service Bus
 ```
 
-### 5.2 Checking Event Processing Lag
+### 5.2 Verificar el Retraso en el Procesamiento de Eventos
 
-The primary health metric for the event consumer is `users_event_processing_lag_seconds`.
+La métrica de salud principal para el consumidor de eventos es `users_event_processing_lag_seconds`.
 
-**Warning threshold:** > 60 seconds for 5 minutes
-**Critical threshold:** > 300 seconds
+**Umbral de advertencia:** > 60 segundos durante 5 minutos
+**Umbral crítico:** > 300 segundos
 
 ```bash
-# Prometheus query
+# Consulta de Prometheus
 users_event_processing_lag_seconds
 
-# Grafana dashboard
-# Navigate to: Users Service → Event Processing
+# Panel de Grafana
+# Navegar a: Users Service → Event Processing
 ```
 
-**If lag is increasing:**
+**Si el retraso está aumentando:**
 
-1. Check consumer throughput:
+1. Verifica el rendimiento del consumidor:
    ```bash
-   # Prometheus — events processed per second
+   # Prometheus — eventos procesados por segundo
    rate(users_events_processed_total[5m])
    ```
 
-2. Check for throttled or blocked processing:
+2. Verifica si hay procesamiento limitado o bloqueado:
    ```bash
-   # Application log search
+   # Búsqueda en registros de aplicación
    grep -E "(EventProcessingException|DeadLetterException|MessageLockLost)" \
-     <logfile>
+     <archivo_de_registro>
    ```
 
-3. Inspect the dead-letter queue:
+3. Inspecciona la cola de mensajes fallidos:
    ```bash
    az servicebus topic subscription show \
      --resource-group platform-rg \
@@ -419,7 +419,7 @@ users_event_processing_lag_seconds
      --subscription-name users-service \
      --query "deadLetteringOnMessageExpiration"
 
-   # Peek at dead-letter messages
+   # Ver mensajes en la cola de mensajes fallidos
    az servicebus topic subscription message peek \
      --resource-group platform-rg \
      --namespace-name platform-sb \
@@ -427,21 +427,21 @@ users_event_processing_lag_seconds
      --subscription-name users-service/$DeadLetterQueueName
    ```
 
-### 5.3 Common Event Consumer Failures
+### 5.3 Fallos Comunes del Consumidor de Eventos
 
-#### 5.3.1 Poison Message
+#### 5.3.1 Mensaje Dañado
 
-A message that cannot be processed due to schema or data issues.
+Un mensaje que no puede procesarse debido a problemas de esquema o datos.
 
-**Symptoms:**
-- `users_events_processed_total` flatlines while `ActiveMessages` in the subscription grows
-- Logs show `EventProcessingException: Failed to deserialize event` or `DbException: Insert or update on table "users" violates foreign key constraint`
-- Messages appearing in dead-letter queue
+**Síntomas:**
+- `users_events_processed_total` se estabiliza mientras `ActiveMessages` en la suscripción crece
+- Los registros muestran `EventProcessingException: Failed to deserialize event` o `DbException: Insert or update on table "users" violates foreign key constraint`
+- Mensajes que aparecen en la cola de mensajes fallidos
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```bash
-# Read the dead-letter message body
+# Leer el cuerpo del mensaje fallido
 az servicebus topic subscription message peek \
   --resource-group platform-rg \
   --namespace-name platform-sb \
@@ -449,15 +449,15 @@ az servicebus topic subscription message peek \
   --subscription-name users-service/$DeadLetterQueueName | jq '.[0].body'
 ```
 
-Look for:
-- Missing `userId` field
-- Malformed JSON (extra/missing commas, unquoted strings)
-- `userId` referencing a user that does not exist (foreign key violation)
-- Wrong event type (`user.unknown` instead of `user.login`)
+Buscar:
+- Campo `userId` faltante
+- JSON mal formado (comas adicionales/faltantes, cadenas sin comillas)
+- `userId` que referencia un usuario que no existe (violación de clave foránea)
+- Tipo de evento incorrecto (`user.unknown` en lugar de `user.login`)
 
-**Resolution:**
+**Resolución:**
 
-1. If the message is genuinely malformed and cannot be processed, remove it from the dead-letter queue:
+1. Si el mensaje está genuinamente mal formado y no puede procesarse, elimínalo de la cola de mensajes fallidos:
 
 ```bash
 az servicebus topic subscription message receive \
@@ -468,26 +468,26 @@ az servicebus topic subscription message receive \
   --count 1
 ```
 
-2. If the schema has changed (new fields added), update the deserialization logic in the Event Consumer and redeploy.
+2. Si el esquema ha cambiado (se agregaron nuevos campos), actualiza la lógica de deserialización en el Consumidor de Eventos y vuelve a implementar.
 
-3. If the issue was a transient database failure (e.g., connection timeout), replay the dead-letter messages by forwarding them back to the main subscription (Azure Portal: Service Bus Explorer -> Dead-letter -> Re-send).
+3. Si el problema fue un fallo transitorio de la base de datos (ej., timeout de conexión), reenvía los mensajes fallidos de vuelta a la suscripción principal (Azure Portal: Service Bus Explorer -> Dead-letter -> Re-send).
 
-#### 5.3.2 Duplicate Event Replay Storm
+#### 5.3.2 Tormenta de Reintentos de Eventos Duplicados
 
-If the same events are redelivered repeatedly, the deduplication table (`event_deduplication`) grows rapidly, potentially causing:
-- High memory usage from the deduplication cache
-- Slow `INSERT` performance as the table grows
-- False-positive idempotency failures
+Si los mismos eventos se redistribuyen repetidamente, la tabla de deduplicación (`event_deduplication`) crece rápidamente, pudiendo causar:
+- Alto uso de memoria de la caché de deduplicación
+- Rendimiento lento de `INSERT` a medida que la tabla crece
+- Fallos de idempotencia con falsos positivos
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```sql
--- Check deduplication table growth rate
+-- Verificar tasa de crecimiento de la tabla de deduplicación
 SELECT COUNT(*), MIN(processed_at), MAX(processed_at)
 FROM event_deduplication
 WHERE processed_at > NOW() - INTERVAL '1 hour';
 
--- Check for duplicate event IDs
+-- Verificar IDs de eventos duplicados
 SELECT event_id, COUNT(*) as occurrence_count
 FROM event_deduplication
 WHERE processed_at > NOW() - INTERVAL '1 hour'
@@ -495,28 +495,28 @@ GROUP BY event_id
 HAVING COUNT(*) > 1;
 ```
 
-**Resolution:**
+**Resolución:**
 
-1. Verify the Service Bus subscription's duplicate detection is enabled (it should be, but a misconfiguration can cause replays).
-2. Check that the Event Consumer completes messages successfully -- if it fails to complete, Service Bus redelivers after the lock expires (default: 30 seconds).
-3. If the deduplication table is oversized (> 100k entries), the nightly cleanup job may need tuning. Run a manual cleanup:
+1. Verifica que la detección de duplicados de la suscripción de Service Bus esté habilitada (debería estarlo, pero una mala configuración puede causar reintentos).
+2. Verifica que el Consumidor de Eventos complete los mensajes correctamente -- si falla al completar, Service Bus redistribuye después de que el bloqueo expire (predeterminado: 30 segundos).
+3. Si la tabla de deduplicación es demasiado grande (> 100k entradas), es posible que el trabajo de limpieza nocturna necesite ajustes. Ejecuta una limpieza manual:
 
 ```sql
 DELETE FROM event_deduplication
 WHERE processed_at < NOW() - INTERVAL '7 days';
 ```
 
-#### 5.3.3 Message Lock Lost
+#### 5.3.3 Bloqueo de Mensaje Perdido
 
-If an event takes longer than 5 minutes to process (the max lock duration), Service Bus releases the lock and another consumer may pick it up.
+Si un evento tarda más de 5 minutos en procesarse (la duración máxima de bloqueo), Service Bus libera el bloqueo y otro consumidor puede recogerlo.
 
-**Symptoms:**
-- `MessageLockLostException` in logs
-- Same event processed multiple times (duplicates in `last_login_at` updates)
+**Síntomas:**
+- `MessageLockLostException` en los registros
+- El mismo evento procesado múltiples veces (duplicados en actualizaciones de `last_login_at`)
 
-**Resolution:**
+**Resolución:**
 
-1. Check if a particular query is slow (missing index on `users` table for the event update path):
+1. Verifica si alguna consulta en particular es lenta (índice faltante en la tabla `users` para la ruta de actualización de eventos):
 
 ```sql
 EXPLAIN ANALYZE UPDATE users
@@ -524,14 +524,14 @@ SET last_login_at = NOW()
 WHERE id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 ```
 
-2. If lock duration is consistently insufficient, consider breaking the work into smaller operations or increasing the lock duration in the Service Bus subscription configuration.
+2. Si la duración del bloqueo es consistentemente insuficiente, considera dividir el trabajo en operaciones más pequeñas o aumentar la duración del bloqueo en la configuración de la suscripción de Service Bus.
 
-### 5.4 Simulating Events Locally
+### 5.4 Simulación de Eventos Localmente
 
-For development, you can simulate events without an Azure Service Bus by calling the event processing logic directly:
+Para desarrollo, puedes simular eventos sin Azure Service Bus llamando directamente a la lógica de procesamiento de eventos:
 
 ```csharp
-// In a test or debug session
+// En una sesión de prueba o depuración
 var consumer = serviceProvider.GetRequiredService<IEventConsumer>();
 await consumer.ProcessEventAsync(new AuthEvent
 {
@@ -541,64 +541,64 @@ await consumer.ProcessEventAsync(new AuthEvent
 }, CancellationToken.None);
 ```
 
-### 5.5 Event Consumer Metrics
+### 5.5 Métricas del Consumidor de Eventos
 
-| Metric | Type | What It Tells You |
+| Métrica | Tipo | Qué Te Indica |
 |---|---|---|
-| `users_events_processed_total` | Counter | Throughput — should be > 0 when events are on the bus |
-| `users_event_processing_lag_seconds` | Gauge | How far behind the consumer is |
-| `users_event_processing_duration_seconds` | Histogram | How long each event takes to process |
-| `users_event_dlq_count` | Gauge | Number of messages in dead-letter queue |
-| `users_event_deduplication_cache_size` | Gauge | Size of the in-memory deduplication cache |
+| `users_events_processed_total` | Contador | Rendimiento -- debe ser > 0 cuando hay eventos en el bus |
+| `users_event_processing_lag_seconds` | Medidor | Cuánto retraso tiene el consumidor |
+| `users_event_processing_duration_seconds` | Histograma | Cuánto tiempo toma procesar cada evento |
+| `users_event_dlq_count` | Medidor | Número de mensajes en la cola de mensajes fallidos |
+| `users_event_deduplication_cache_size` | Medidor | Tamaño de la caché de deduplicación en memoria |
 
 ---
 
-## 6. Common Errors and Resolutions
+## 6. Errores Comunes y Resoluciones
 
-### 6.1 Auth Service Unreachable
+### 6.1 Auth Service Inaccesible
 
-**HTTP Status:** `503 Service Unavailable` on all authenticated endpoints
+**Estado HTTP:** `503 Service Unavailable` en todos los endpoints autenticados
 
-**Symptoms:**
-- `users_auth_service_grpc_latency` showing timeouts or `connection refused`
+**Síntomas:**
+- `users_auth_service_grpc_latency` mostrando timeouts o `connection refused`
 - `users_auth_service_grpc_errors_total` > 0
-- `users_jwks_cache_age_seconds` > 300 (cache expired)
-- Readiness probe failing on `auth_service` check
+- `users_jwks_cache_age_seconds` > 300 (caché expirada)
+- Sonda de readiness fallando en la verificación de `auth_service`
 
-**Root Cause Analysis Table:**
+**Tabla de Análisis de Causa Raíz:**
 
-| Observation | Likely Cause | Next Step |
+| Observación | Causa Probable | Siguiente Paso |
 |---|---|---|
-| Auth Service pods in `CrashLoopBackOff` | Auth Service broken deployment | Follow Auth Service runbook |
-| Auth Service pods running but gRPC port unreachable | mTLS certificate issue or network policy | Check `kubectl describe endpoints auth-service -n platform` |
-| gRPC reachable but returns errors | Auth Service health check failure or overloaded | Check Auth Service `ConnectionErrors` and `RequestRate` metrics |
-| Auth Service healthy from debug pod but Users Service cannot connect | Service mesh (Istio) routing issue, missing mTLS certificate, or DNS resolution failure | Check Istio proxy logs on Users Service pod: `kubectl logs deploy/users-service -c istio-proxy -n platform` |
-| gRPC healthy but JWKS cache expired | Network partition between Users Service and Auth Service, or JWKS cache refresh logic broken | Check firewall rules, then check `AuthServiceClient.GetJwksAsync()` error rate |
+| Pods del Auth Service en `CrashLoopBackOff` | Despliegue del Auth Service roto | Seguir el runbook del Auth Service |
+| Pods del Auth Service funcionando pero puerto gRPC inaccesible | Problema de certificado mTLS o política de red | Verificar `kubectl describe endpoints auth-service -n platform` |
+| gRPC accesible pero devuelve errores | Fallo de verificación de salud del Auth Service o sobrecarga | Verificar métricas `ConnectionErrors` y `RequestRate` del Auth Service |
+| Auth Service saludable desde pod de depuración pero Users Service no puede conectar | Problema de enrutamiento de Service Mesh (Istio), certificado mTLS faltante, o fallo de resolución DNS | Verificar registros del proxy Istio en el pod de Users Service: `kubectl logs deploy/users-service -c istio-proxy -n platform` |
+| gRPC saludable pero caché JWKS expirada | Partición de red entre Users Service y Auth Service, o lógica de actualización de caché JWKS rota | Verificar reglas de firewall, luego verificar tasa de error de `AuthServiceClient.GetJwksAsync()` |
 
-**Immediate resolution steps:**
+**Pasos de resolución inmediata:**
 
-1. Check if the JWKS cache is still valid:
+1. Verifica si la caché JWKS sigue siendo válida:
    ```bash
-   # If < 300 seconds, the service is still operational from cache
+   # Si < 300 segundos, el servicio sigue operativo desde la caché
    curl -s http://localhost:7201/metrics | grep users_jwks_cache_age_seconds
    ```
 
-2. Verify connectivity from a debug pod:
+2. Verifica la conectividad desde un pod de depuración:
    ```bash
    kubectl run debug-pod --image=nicolaka/netshoot -n platform --rm -it -- /bin/bash
    grpcurl -insecure auth-service.platform.svc.cluster.local:5103 health.Health/Check
    ```
 
-3. If the Auth Service is down and the cache has expired, see the [Emergency Cache TTL Override](../../docs/runbooks/incident-response.md#option-b--extend-jwks-cache-ttl-emergency-override-only) in the incident response runbook.
+3. Si el Auth Service está caído y la caché ha expirado, consulta la [Sobrescritura de Emergencia del TTL de Caché](../../docs/runbooks/incident-response.md#option-b--extend-jwks-cache-ttl-emergency-override-only) en el runbook de respuesta a incidentes.
 
-**Prevention:**
+**Prevención:**
 
-- Ensure the JWKS cache TTL (5 minutes) is long enough to absorb brief Auth Service outages.
-- Monitor `users_auth_service_grpc_errors_total` for early warning of connectivity issues before the cache expires.
-- Configure proper gRPC keepalive and timeout settings on the `AuthServiceClient`:
+- Asegúrate de que el TTL de la caché JWKS (5 minutos) sea suficientemente largo para absorber cortes breves del Auth Service.
+- Monitorea `users_auth_service_grpc_errors_total` para obtener una alerta temprana de problemas de conectividad antes de que la caché expire.
+- Configura los ajustes adecuados de keepalive y timeout de gRPC en el `AuthServiceClient`:
 
 ```csharp
-// Program.cs — gRPC channel configuration
+// Program.cs — configuración del canal gRPC
 builder.Services.AddGrpcClient<AuthService.AuthServiceClient>(o =>
 {
     o.Address = new Uri(configuration["Auth:GrpcEndpoint"]);
@@ -613,120 +613,120 @@ builder.Services.AddGrpcClient<AuthService.AuthServiceClient>(o =>
 });
 ```
 
-### 6.2 RBAC Denied
+### 6.2 RBAC Denegado
 
-**HTTP Status:** `403 Forbidden`
+**Estado HTTP:** `403 Forbidden`
 
-**Symptom:** The caller is authenticated but does not have the required role for the endpoint.
+**Síntoma:** El solicitante está autenticado pero no tiene el rol requerido para el endpoint.
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```bash
-# Decode the JWT to see the roles claim
+# Decodificar el JWT para ver la claim de roles
 jwt decode <token> | jq '.payload.roles'
 
-# Expected format: ["admin", "developer"]
+# Formato esperado: ["admin", "developer"]
 ```
 
-**Check RBAC rules for the endpoint:**
+**Verificar reglas RBAC para el endpoint:**
 
-| Endpoint | Required Role | Your Token's Roles | Result |
+| Endpoint | Rol Requerido | Roles de tu Token | Resultado |
 |---|---|---|---|
-| `GET /api/users` | `admin` or `operator` | `["developer"]` | 403 |
+| `GET /api/users` | `admin` o `operator` | `["developer"]` | 403 |
 | `POST /api/users` | `admin` | `["user"]` | 403 |
 | `DELETE /api/users/{id}` | `admin` | `["operator"]` | 403 |
-| `GET /api/users/{id}` (other user) | `admin` or `operator` | `["user"]` | 403 |
+| `GET /api/users/{id}` (otro usuario) | `admin` o `operator` | `["user"]` | 403 |
 
-**Resolution:** The caller needs a token with the appropriate role. Either:
-- Log in as a user with the required role.
-- An admin must assign the missing role via `PUT /api/users/{id}` with `{"roles": ["admin"]}`.
+**Resolución:** El solicitante necesita un token con el rol apropiado. Ya sea:
+- Iniciar sesión como un usuario con el rol requerido.
+- Un administrador debe asignar el rol faltante mediante `PUT /api/users/{id}` con `{"roles": ["admin"]}`.
 
-**Common Misconfiguration -- Roles claim is a string, not an array:**
+**Mala Configuración Común -- La claim de roles es una cadena, no un arreglo:**
 
-If the Auth Service issues roles as a single string instead of an array, the RBAC check will fail:
+Si el Auth Service emite los roles como una cadena única en lugar de un arreglo, la verificación RBAC fallará:
 
 ```json
-// Wrong — string, not array
+// Incorrecto — cadena, no arreglo
 { "roles": "admin" }
 
-// Correct — array
+// Correcto — arreglo
 { "roles": ["admin"] }
 ```
 
-Verify the claim format by decoding the JWT. If the format is wrong, fix the claim emission in the Auth Service's `TokenService`.
+Verifica el formato de la claim decodificando el JWT. Si el formato es incorrecto, corrige la emisión de claims en el `TokenService` del Auth Service.
 
-### 6.3 Database Connection Failure
+### 6.3 Fallo de Conexión a la Base de Datos
 
-**HTTP Status:** `503 Service Unavailable` (readiness probe fails)
+**Estado HTTP:** `503 Service Unavailable` (la sonda de readiness falla)
 
-**Symptoms:**
+**Síntomas:**
 - `users_db_connection_errors_total` > 0
-- Readiness probe (`/api/health/ready`) returning `503`
-- Logs: `NpgsqlException`, `connection failed`, `timeout`
+- Sonda de readiness (`/api/health/ready`) devolviendo `503`
+- Registros: `NpgsqlException`, `connection failed`, `timeout`
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```bash
-# 1. Check the connection pool
+# 1. Verificar el pool de conexiones
 curl -s http://localhost:7201/metrics | grep users_db_connection_pool
 
-# 2. Check if the database is reachable from the pod
+# 2. Verificar si la base de datos es accesible desde el pod
 kubectl exec deploy/users-service -n platform -- \
   psql "$CONNECTION_STRING" -c "SELECT 1;"
 
-# 3. Check the connection string (pulled from Key Vault)
+# 3. Verificar la cadena de conexión (obtenida de Key Vault)
 kubectl exec deploy/users-service -n platform -- env | grep ConnectionStrings__UsersDb
 ```
 
-**Common causes and resolutions:**
+**Causas comunes y resoluciones:**
 
-| Cause | Diagnosis | Resolution |
+| Causa | Diagnóstico | Resolución |
 |---|---|---|
-| Connection pool exhausted | `users_db_connection_pool_size` at max (30) with > 0 errors | Kill long-running queries: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state != 'idle' AND query_start < NOW() - INTERVAL '5 minutes'` |
-| Database unreachable | `psql` connection fails from pod | Check Azure PostgreSQL status, consider failover to standby |
-| Connection string expired | Recently rotated credentials in Key Vault | Pods pick up new secrets within the sync interval. Force: `kubectl rollout restart deployment/users-service -n platform` |
-| Network policy blocking outbound | Other outbound calls also fail | Check `NetworkPolicy` and `azure-firewall` rules |
-| TLS version mismatch | `NpgsqlException: SSL/TLS handshake failed` | Verify PostgreSQL server allows TLS 1.3. The Npgsql client defaults to `SslMode.Require`. |
+| Pool de conexiones agotado | `users_db_connection_pool_size` al máximo (30) con > 0 errores | Matar consultas de larga duración: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state != 'idle' AND query_start < NOW() - INTERVAL '5 minutes'` |
+| Base de datos inaccesible | La conexión `psql` falla desde el pod | Verificar el estado de Azure PostgreSQL, considerar failover al servidor de respaldo |
+| Cadena de conexión expirada | Credenciales rotadas recientemente en Key Vault | Los pods recogen nuevos secretos dentro del intervalo de sincronización. Forzar: `kubectl rollout restart deployment/users-service -n platform` |
+| Política de red bloqueando salida | Otras llamadas salientes también fallan | Verificar `NetworkPolicy` y reglas de `azure-firewall` |
+| Incompatibilidad de versión TLS | `NpgsqlException: SSL/TLS handshake failed` | Verificar que el servidor PostgreSQL permita TLS 1.3. El cliente Npgsql usa por defecto `SslMode.Require`. |
 
-### 6.4 Rate Limiting
+### 6.4 Limitación de Tasa
 
-**HTTP Status:** `429 Too Many Requests`
+**Estado HTTP:** `429 Too Many Requests`
 
-**Symptom:** The client is sending requests faster than the configured limit.
+**Síntoma:** El cliente está enviando solicitudes más rápido que el límite configurado.
 
-Note: Rate limiting is enforced at the Auth Service level for authentication endpoints and at the API Gateway for the Users Service. The Users Service itself does not implement rate limiting.
+Nota: La limitación de tasa se aplica a nivel del Auth Service para endpoints de autenticación y en la API Gateway para el Users Service. El Users Service en sí mismo no implementa limitación de tasa.
 
-**Resolution:**
-- The client must respect the `Retry-After` header and back off.
-- For emergency bulk operations (e.g., syncing thousands of users), coordinate with Platform Engineering to temporarily increase the rate limit.
+**Resolución:**
+- El cliente debe respetar la cabecera `Retry-After` y retroceder.
+- Para operaciones masivas de emergencia (ej., sincronización de miles de usuarios), coordinar con Ingeniería de Plataforma para aumentar temporalmente el límite de tasa.
 
-### 6.5 User Not Found (404) vs. Forbidden (403)
+### 6.5 Usuario No Encontrado (404) vs. Prohibido (403)
 
-The Users Service returns `404 Not Found` for non-existent users AND for users that exist in a different tenant. This prevents user enumeration across tenants.
+El Users Service devuelve `404 Not Found` para usuarios inexistentes Y para usuarios que existen en un tenant diferente. Esto evita la enumeración de usuarios entre tenants.
 
-**Diagnosis:**
+**Diagnóstico:**
 
 ```bash
-# Test with Tenant A token against Tenant B's user
-curl -v -H "Authorization: Bearer $(token-for-tenant-a)" \
+# Probar con token del Tenant A contra un usuario del Tenant B
+curl -v -H "Authorization: Bearer $(token-para-tenant-a)" \
   https://users-service.platform/api/users/tenant-b-user-id
 
-# Response: 404 Not Found
-# (The user exists but is invisible to Tenant A — correct behavior)
+# Respuesta: 404 Not Found
+# (El usuario existe pero es invisible para el Tenant A — comportamiento correcto)
 ```
 
-**If you expect a user to exist but get 404:**
+**Si esperas que un usuario exista pero obtienes 404:**
 
-1. Verify the user exists in the correct tenant:
+1. Verifica que el usuario existe en el tenant correcto:
    ```sql
    SELECT id, tenant_id, username, deleted_at
    FROM users
    WHERE id = 'expected-uuid';
    ```
 
-2. Check if the user was soft-deleted (`deleted_at IS NOT NULL`). Soft-deleted users return 404 unless the caller is an admin and explicitly uses the `includeDeleted` filter.
+2. Verifica si el usuario fue eliminado lógicamente (`deleted_at IS NOT NULL`). Los usuarios eliminados lógicamente devuelven 404 a menos que el solicitante sea un administrador y use explícitamente el filtro `includeDeleted`.
 
-3. Check that the JWT's `tid` claim matches the user's `tenant_id`. Run:
+3. Verifica que la claim `tid` del JWT coincida con el `tenant_id` del usuario. Ejecuta:
 
 ```bash
 jwt decode <token> | jq '.payload.tid'
@@ -734,11 +734,11 @@ jwt decode <token> | jq '.payload.tid'
 
 ---
 
-## 7. VS Code Debugging Setup
+## 7. Configuración de Depuración en VS Code
 
-### 7.1 Launch Configuration
+### 7.1 Configuración de Inicio
 
-Create `.vscode/launch.json` in the repository root:
+Crea `.vscode/launch.json` en la raíz del repositorio:
 
 ```json
 {
@@ -789,9 +789,9 @@ Create `.vscode/launch.json` in the repository root:
 }
 ```
 
-### 7.2 Build Task
+### 7.2 Tarea de Compilación
 
-Create `.vscode/tasks.json`:
+Crea `.vscode/tasks.json`:
 
 ```json
 {
@@ -813,25 +813,25 @@ Create `.vscode/tasks.json`:
 }
 ```
 
-### 7.3 Debugging Key Code Paths
+### 7.3 Depuración de Rutas de Código Clave
 
-**Where to set breakpoints for common scenarios:**
+**Dónde colocar puntos de interrupción para escenarios comunes:**
 
-| What You Want to Debug | File | Line / Method |
+| Qué Quieres Depurar | Archivo | Línea / Método |
 |---|---|---|
-| JWT validation entry point | `AuthServiceClient.ValidateTokenAsync()` | Start of method |
-| JWT validation fallback to cache | `AuthServiceClient.ValidateTokenAsync()` | JWKS cache read |
-| RBAC enforcement | Controller / middleware | After claims extraction, before `IUserService` call |
-| User creation flow | `UserService.CreateUserAsync()` | Whole method |
-| Profile validation | `ProfileValidator.ValidateAsync()` | Rules execution |
-| Database query | `UserRepository.GetUsersAsync()` | Dapper `QueryAsync` call |
-| Event consumption | `EventConsumer.ProcessEventAsync()` | Event dispatch |
-| gRPC client call | `AuthServiceClient` constructor or gRPC call | Channel configuration, call execution |
-| Service Bus message processing | `EventConsumer.ConsumeMessageAsync()` | Message deserialization |
+| Punto de entrada de validación JWT | `AuthServiceClient.ValidateTokenAsync()` | Inicio del método |
+| Recurso a la caché en validación JWT | `AuthServiceClient.ValidateTokenAsync()` | Lectura de caché JWKS |
+| Aplicación de RBAC | Controller / middleware | Después de la extracción de claims, antes de la llamada a `IUserService` |
+| Flujo de creación de usuario | `UserService.CreateUserAsync()` | Método completo |
+| Validación de perfil | `ProfileValidator.ValidateAsync()` | Ejecución de reglas |
+| Consulta a base de datos | `UserRepository.GetUsersAsync()` | Llamada a `QueryAsync` de Dapper |
+| Consumo de eventos | `EventConsumer.ProcessEventAsync()` | Despacho de eventos |
+| Llamada a cliente gRPC | Constructor de `AuthServiceClient` o llamada gRPC | Configuración de canal, ejecución de llamada |
+| Procesamiento de mensajes de Service Bus | `EventConsumer.ConsumeMessageAsync()` | Deserialización de mensaje |
 
-### 7.4 Debugging with Docker Compose
+### 7.4 Depuración con Docker Compose
 
-If running both the Auth Service and Users Service under Docker Compose, use the following `launch.json` configuration to attach to the running container:
+Si ejecutas tanto el Auth Service como el Users Service bajo Docker Compose, usa la siguiente configuración de `launch.json` para adjuntarte al contenedor en ejecución:
 
 ```json
 {
@@ -852,69 +852,69 @@ If running both the Auth Service and Users Service under Docker Compose, use the
 }
 ```
 
-**Prerequisites for Docker debugging:**
+**Requisitos previos para depuración con Docker:**
 
-1. Ensure the Docker image includes `vsdbg` (the .NET debugger). Add this to your `Dockerfile`:
+1. Asegúrate de que la imagen Docker incluya `vsdbg` (el depurador de .NET). Agrega esto a tu `Dockerfile`:
 
 ```dockerfile
-# Debug stage only
+# Solo etapa de depuración
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS debug
 RUN dotnet tool install --tool-path /tools dotnet-vsdbg
 COPY --from=build /app /app
 ```
 
-2. Run the container with `--cap-add=SYS_PTRACE --security-opt seccomp=unconfined` to enable debugging.
+2. Ejecuta el contenedor con `--cap-add=SYS_PTRACE --security-opt seccomp=unconfined` para habilitar la depuración.
 
-3. Attach VS Code to the container using the configuration above.
+3. Adjunta VS Code al contenedor usando la configuración anterior.
 
-### 7.5 Debugging Tips
+### 7.5 Consejos de Depuración
 
-**Hot Reload (development):** Use `dotnet watch` for fast iteration:
+**Hot Reload (desarrollo):** Usa `dotnet watch` para iteración rápida:
 
 ```bash
 dotnet watch run --project src/UsersService
 ```
 
-This automatically rebuilds and restarts the service when you save source files.
+Esto reconstruye y reinicia automáticamente el servicio cuando guardas archivos fuente.
 
-**Conditional breakpoints:** When debugging event processing for a specific user, set a conditional breakpoint:
+**Puntos de interrupción condicionales:** Al depurar el procesamiento de eventos para un usuario específico, establece un punto de interrupción condicional:
 
 ```
 Condition: userId == Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 ```
 
-**Logpoints:** Instead of adding `Console.WriteLine` or `ILogger.LogDebug` during debugging, use VS Code logpoints (right-click the gutter -> "Add Logpoint"):
+**Logpoints:** En lugar de agregar `Console.WriteLine` o `ILogger.LogDebug` durante la depuración, usa logpoints de VS Code (clic derecho en el margen -> "Add Logpoint"):
 
 ```
 Processing event: {eventType} for user {userId}
 ```
 
-Logpoints are non-breaking -- they print to the debug console without stopping execution.
+Los logpoints no interrumpen -- imprimen en la consola de depuración sin detener la ejecución.
 
-**Inspect gRPC traffic:** Use gRPC reflection to inspect the Auth Service's gRPC API:
+**Inspeccionar tráfico gRPC:** Usa la reflexión gRPC para inspeccionar la API gRPC del Auth Service:
 
 ```bash
 grpcurl -plaintext localhost:5103 list
 grpcurl -plaintext localhost:5103 describe auth.AuthService
 ```
 
-### 7.6 Debugging the Auth Service Alongside
+### 7.6 Depuración del Auth Service en Paralelo
 
-Since the Users Service has a hard dependency on the Auth Service, you often need to debug both. Run both services locally:
+Dado que el Users Service tiene una dependencia estricta del Auth Service, a menudo necesitas depurar ambos. Ejecuta ambos servicios localmente:
 
 ```bash
 # Terminal 1: Auth Service
 cd ../authenthication-demo-backstage
 dotnet run --project src/AuthService
-# Listens on https://localhost:7103, gRPC on https://localhost:5103
+# Escucha en https://localhost:7103, gRPC en https://localhost:5103
 
 # Terminal 2: Users Service
 cd ../users-demo-backstage
 dotnet run --project src/UsersService
-# Listens on https://localhost:7201
+# Escucha en https://localhost:7201
 ```
 
-Or use the VS Code compound launch configuration:
+O usa la configuración de inicio compuesta de VS Code:
 
 ```json
 {
@@ -944,67 +944,67 @@ Or use the VS Code compound launch configuration:
 
 ---
 
-## 8. Diagnostic Commands Reference
+## 8. Referencia de Comandos de Diagnóstico
 
-### 8.1 Service Health
+### 8.1 Salud del Servicio
 
 ```bash
-# Liveness probe (process alive?)
+# Sonda de liveness (proceso vivo?)
 curl -s -o /dev/null -w "%{http_code}" https://users-service.platform/api/health/live
 
-# Readiness probe (dependencies healthy?)
+# Sonda de readiness (dependencias saludables?)
 curl -s https://users-service.platform/api/health/ready | jq '.'
 
-# Check each dependency status
+# Verificar el estado de cada dependencia
 curl -s https://users-service.platform/api/health/ready | jq '.checks'
 ```
 
 ### 8.2 Kubernetes
 
 ```bash
-# Pod status
+# Estado de los pods
 kubectl get pods -n platform -l app=users-service
 
-# Pod logs (last 100 lines, follow)
+# Registros del pod (últimas 100 líneas, en seguimiento)
 kubectl logs -n platform -l app=users-service --tail=100 -f
 
-# Pod logs filtered by trace ID
+# Registros del pod filtrados por ID de rastro
 kubectl logs -n platform -l app=users-service | grep "abcdef1234567890"
 
-# Pod logs filtered by tenant
+# Registros del pod filtrados por tenant
 kubectl logs -n platform -l app=users-service | grep '"tenant_id":"00000000-0000-0000-0000-000000000001"'
 
-# Pod logs filtered by error level
+# Registros del pod filtrados por nivel de error
 kubectl logs -n platform -l app=users-service | grep '"level":"Error"'
 
-# Istio proxy logs (mTLS issues)
+# Registros del proxy Istio (problemas mTLS)
 kubectl logs -n platform -l app=users-service -c istio-proxy
 
-# Exec into pod for network diagnostics
+# Ejecutar dentro del pod para diagnósticos de red
 kubectl exec -n platform -it deploy/users-service -- /bin/bash
 
-# Restart pods (cache clear, connection refresh)
+# Reiniciar pods (limpieza de caché, renovación de conexión)
 kubectl rollout restart deployment/users-service -n platform
 
-# Check environment variables
+# Verificar variables de entorno
 kubectl exec deploy/users-service -n platform -- env | sort
 ```
 
 ### 8.3 PostgreSQL
 
 ```sql
--- Check user exists
+-- Verificar si el usuario existe
 SELECT id, tenant_id, username, email, deleted_at
 FROM users
 WHERE id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
--- Check active connections
+-- Verificar conexiones activas
 SELECT state, COUNT(*) as count
 FROM pg_stat_activity
 WHERE datname = 'usersdb'
 GROUP BY state;
 
--- Check long-running queries
+-- Verificar consultas de larga duración
 SELECT pid, wait_event_type, state, 
        EXTRACT(EPOCH FROM (NOW() - query_start))::int AS seconds_running,
        LEFT(query, 150) AS query_short
@@ -1013,53 +1013,53 @@ WHERE state != 'idle'
   AND backend_type = 'client backend'
 ORDER BY query_start;
 
--- Check event_deduplication table
+-- Verificar tabla event_deduplication
 SELECT COUNT(*), MIN(processed_at), MAX(processed_at)
 FROM event_deduplication;
 
--- Check soft-deleted users
+-- Verificar usuarios eliminados lógicamente
 SELECT COUNT(*) as deleted_count
 FROM users
 WHERE deleted_at IS NOT NULL;
 
--- Verify RLS is enabled
+-- Verificar si RLS está habilitado
 SELECT relname, relrowsecurity
 FROM pg_class
 WHERE relname IN ('users', 'event_deduplication', 'audit_logs');
 ```
 
-### 8.4 Prometheus Metrics
+### 8.4 Métricas de Prometheus
 
 ```bash
-# Scrape all metrics (from the pod or port-forward)
+# Obtener todas las métricas (desde el pod o port-forward)
 curl -s http://localhost:7201/metrics
 
-# JWT validation errors
+# Errores de validación JWT
 curl -s http://localhost:7201/metrics | grep users_jwt_validation_errors_total
 
-# Request rate by status code
+# Tasa de solicitudes por código de estado
 curl -s http://localhost:7201/metrics | grep users_requests_total
 
-# Event processing lag
+# Retraso en procesamiento de eventos
 curl -s http://localhost:7201/metrics | grep users_event_processing_lag_seconds
 
-# gRPC latency to Auth Service
+# Latencia gRPC hacia Auth Service
 curl -s http://localhost:7201/metrics | grep users_auth_validation_duration_seconds
 
-# Connection pool status
+# Estado del pool de conexiones
 curl -s http://localhost:7201/metrics | grep users_db_connection
 ```
 
 ### 8.5 Azure Service Bus
 
 ```bash
-# Check subscription metrics
+# Verificar métricas de suscripción
 az monitor metrics list \
   --resource /subscriptions/.../servicebus/.../topics/auth-events \
   --metric "ActiveMessages" "DeadLetterMessageCount" \
   --interval 5m
 
-# Peek at subscription messages
+# Ver mensajes de la suscripción
 az servicebus topic subscription message peek \
   --resource-group platform-rg \
   --namespace-name platform-sb \
@@ -1067,7 +1067,7 @@ az servicebus topic subscription message peek \
   --subscription-name users-service \
   --count 5
 
-# Peek at dead-letter queue
+# Ver cola de mensajes fallidos
 az servicebus topic subscription message peek \
   --resource-group platform-rg \
   --namespace-name platform-sb \
@@ -1076,37 +1076,37 @@ az servicebus topic subscription message peek \
   --count 5
 ```
 
-### 8.6 Token Operations
+### 8.6 Operaciones con Tokens
 
 ```bash
-# Login (local dev)
+# Iniciar sesión (desarrollo local)
 TOKEN=$(curl -s -X POST https://localhost:5103/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "Platform@2026!"}' | jq -r '.accessToken')
 
-# Decode without validation
+# Decodificar sin validación
 jwt decode $TOKEN
 
-# Decode with jq (standalone)
+# Decodificar con jq (independiente)
 echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.'
 
-# Test against Users Service
+# Probar contra Users Service
 curl -s -H "Authorization: Bearer $TOKEN" \
   https://localhost:7201/api/users | jq '.'
 
-# Check token expiry
+# Verificar expiración del token
 echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq -r '.exp' | xargs -I{} date -d @{}
 ```
 
 ---
 
-## 9. Related Documents
+## 9. Documentos Relacionados
 
-- [Architecture Overview](../architecture/overview.md) -- platform context
-- [Security Architecture](../architecture/security.md) -- JWT validation flow and threat model
-- [Incident Response Runbook](../runbooks/incident-response.md) -- SEV-1/SEV-2 response playbooks
-- [Deployment View](../architecture/deployment-view.md) -- topology, health probes, degradation paths
-- [Events API](../api/events.md) -- event schema, processing guarantees, monitoring
-- [Users API](../api/users-api.md) -- endpoint reference, error responses
-- [Local Development Guide](local-development.md) -- setting up the development environment
-- [Testing Guide](testing.md) -- running tests, testing patterns
+- [Visión General de la Arquitectura](../architecture/overview.md) -- contexto de la plataforma
+- [Arquitectura de Seguridad](../architecture/security.md) -- flujo de validación JWT y modelo de amenazas
+- [Runbook de Respuesta a Incidentes](../runbooks/incident-response.md) -- playbooks de respuesta SEV-1/SEV-2
+- [Vista de Despliegue](../architecture/deployment-view.md) -- topología, sondas de salud, rutas de degradación
+- [API de Eventos](../api/events.md) -- esquemas de eventos, garantías de procesamiento, monitoreo
+- [API de Usuarios](../api/users-api.md) -- referencia de endpoints, respuestas de error
+- [Guía de Desarrollo Local](local-development.md) -- configuración del entorno de desarrollo
+- [Guía de Pruebas](testing.md) -- ejecución de pruebas, patrones de prueba

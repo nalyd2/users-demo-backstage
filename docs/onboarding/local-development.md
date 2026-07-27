@@ -1,92 +1,92 @@
-# Local Development Guide
+# Guía de Desarrollo Local
 
-This guide walks through setting up a local development environment for the Users Service, including its companion Authentication Service and the infrastructure needed for integration tests.
-
----
-
-## Table of Contents
-
-- [Prerequisites](#prerequisites)
-- [Repository Layout](#repository-layout)
-- [Setting Up the Environment](#setting-up-the-environment)
-- [Running the Auth Service (JWT Issuer Mock)](#running-the-auth-service-jwt-issuer-mock)
-- [Running the Users Service](#running-the-users-service)
-- [JWT Validation Stub for Local Development](#jwt-validation-stub-for-local-development)
-- [End-to-End Test Flow](#end-to-end-test-flow)
-- [Using Testcontainers for PostgreSQL](#using-testcontainers-for-postgresql)
-- [Configuration Reference](#configuration-reference)
-- [Troubleshooting](#troubleshooting)
+Esta guía explica cómo configurar un entorno de desarrollo local para el Users Service, incluyendo su Authentication Service complementario y la infraestructura necesaria para las pruebas de integración.
 
 ---
 
-## Prerequisites
+## Tabla de Contenidos
 
-| Tool | Minimum Version | Purpose |
+- [Requisitos Previos](#requisitos-previos)
+- [Estructura del Repositorio](#estructura-del-repositorio)
+- [Configuración del Entorno](#configuración-del-entorno)
+- [Ejecutar el Auth Service (Simulacro de Emisor JWT)](#ejecutar-el-auth-service-simulacro-de-emisor-jwt)
+- [Ejecutar el Users Service](#ejecutar-el-users-service)
+- [Simulacro de Validación JWT para Desarrollo Local](#simulacro-de-validación-jwt-para-desarrollo-local)
+- [Flujo de Prueba de Extremo a Extremo](#flujo-de-prueba-de-extremo-a-extremo)
+- [Uso de Testcontainers para PostgreSQL](#uso-de-testcontainers-para-postgresql)
+- [Referencia de Configuración](#referencia-de-configuración)
+- [Solución de Problemas](#solución-de-problemas)
+
+---
+
+## Requisitos Previos
+
+| Herramienta | Versión Mínima | Propósito |
 |---|---|---|
-| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0 | Build and run both services |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 24+ | PostgreSQL container via Testcontainers |
-| [Git](https://git-scm.com/) | Latest | Source control |
-| An IDE (VS Code, Rider, Visual Studio) | Any | Editing and debugging |
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0 | Compilar y ejecutar ambos servicios |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 24+ | Contenedor PostgreSQL vía Testcontainers |
+| [Git](https://git-scm.com/) | Última | Control de versiones |
+| Un IDE (VS Code, Rider, Visual Studio) | Cualquiera | Edición y depuración |
 
-**Verify the installation:**
+**Verificar la instalación:**
 
 ```bash
 dotnet --version
-# Expected: 10.0.x
+# Esperado: 10.0.x
 
 docker --version
-# Expected: Docker version 24.x or later
+# Esperado: Docker version 24.x o superior
 
 git --version
 ```
 
-> The service targets `net10.0`. If you are on an earlier SDK version, install the .NET 10 SDK from [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/10.0).
+> El servicio apunta a `net10.0`. Si tienes una versión anterior del SDK, instala el SDK de .NET 10 desde [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ---
 
-## Repository Layout
+## Estructura del Repositorio
 
-The Users Service and the Auth Service live in separate repositories. Both must be cloned for a full local setup.
+El Users Service y el Auth Service residen en repositorios separados. Ambos deben clonarse para una configuración local completa.
 
 ```
 C:\Efra-proyects\
-├── users-demo-backstage\          # Users Service (this repo)
-│   ├── src\UsersService\          # .NET 10 web application
-│   │   ├── Controllers\           # Minimal API endpoint definitions
-│   │   ├── Models\                # DTOs and entities
-│   │   ├── Services\              # Business logic (IUserService / UserService)
-│   │   ├── Program.cs             # Application entry point
-│   │   └── appsettings*.json      # Configuration
-│   ├── tests\                     # Unit & integration tests
-│   ├── docs\                      # TechDocs documentation
-│   └── openapi.yaml               # OpenAPI 3.1 specification
+├── users-demo-backstage\          # Users Service (este repositorio)
+│   ├── src\UsersService\          # Aplicación web .NET 10
+│   │   ├── Controllers\           # Definiciones de endpoints Minimal API
+│   │   ├── Models\                # DTOs y entidades
+│   │   ├── Services\              # Lógica de negocio (IUserService / UserService)
+│   │   ├── Program.cs             # Punto de entrada de la aplicación
+│   │   └── appsettings*.json      # Configuración
+│   ├── tests\                     # Pruebas unitarias y de integración
+│   ├── docs\                      # Documentación TechDocs
+│   └── openapi.yaml               # Especificación OpenAPI 3.1
 │
-└── authenthication-demo-backstage\ # Auth Service (companion, separate repo)
-    └── src\AuthService\           # .NET 10 web application
+└── authenthication-demo-backstage\ # Auth Service (compañero, repositorio separado)
+    └── src\AuthService\           # Aplicación web .NET 10
 ```
 
 ---
 
-## Setting Up the Environment
+## Configuración del Entorno
 
-Clone both repositories:
+Clona ambos repositorios:
 
 ```bash
-# From your workspace root
-git clone <users-service-repo-url> users-demo-backstage
-git clone <auth-service-repo-url> authenthication-demo-backstage
+# Desde la raíz de tu espacio de trabajo
+git clone <url-del-repositorio-users-service> users-demo-backstage
+git clone <url-del-repositorio-auth-service> authenthication-demo-backstage
 ```
 
-> If you have already cloned the repos, skip this step and ensure both are on the `main` branch with the latest changes.
+> Si ya has clonado los repositorios, omite este paso y asegúrate de que ambos estén en la rama `main` con los últimos cambios.
 
-Restore dependencies for both projects:
+Restaura las dependencias de ambos proyectos:
 
 ```bash
 dotnet restore c:/Efra-proyects/users-demo-backstage/src/UsersService/UsersService.csproj
 dotnet restore c:/Efra-proyects/authenthication-demo-backstage/src/AuthService/AuthService.csproj
 ```
 
-Build both to confirm no compilation errors:
+Compila ambos para confirmar que no hay errores de compilación:
 
 ```bash
 dotnet build c:/Efra-proyects/users-demo-backstage/src/UsersService/UsersService.csproj --no-restore
@@ -95,75 +95,75 @@ dotnet build c:/Efra-proyects/authenthication-demo-backstage/src/AuthService/Aut
 
 ---
 
-## Running the Auth Service (JWT Issuer Mock)
+## Ejecutar el Auth Service (Simulacro de Emisor JWT)
 
-The Users Service does not issue its own tokens. Every authenticated request requires a JWT issued by the Authentication Service. For local development you **run the real Auth Service** as a sidecar process. It operates in a self-contained mode that does not require PostgreSQL, Redis, or any other external dependency.
+El Users Service no emite sus propios tokens. Cada solicitud autenticada requiere un JWT emitido por el Authentication Service. Para el desarrollo local **ejecutas el Auth Service real** como un proceso secundario. Opera en un modo autónomo que no requiere PostgreSQL, Redis ni ninguna otra dependencia externa.
 
-### Starting the Auth Service
+### Iniciar el Auth Service
 
 ```bash
 dotnet run --project c:/Efra-proyects/authenthication-demo-backstage/src/AuthService/AuthService.csproj
 ```
 
-### What the Auth Service Does in Development Mode
+### Qué Hace el Auth Service en Modo Desarrollo
 
-| Aspect | Behavior |
+| Aspecto | Comportamiento |
 |---|---|
-| **Port** | `https://localhost:7103` (configured in `appsettings.Development.json`) |
-| **Key generation** | An ephemeral 2048-bit RSA key pair is generated on startup. The private key lives only in memory and is discarded when the process exits. |
-| **Demo credentials** | Username: `admin`, Password: `Platform@2026!` |
-| **Token lifetime** | Access tokens: 60 minutes. Refresh tokens: 30 days. |
-| **Data storage** | All state (refresh tokens, revoked JTIs) is in-memory. Restarting the service clears everything. |
-| **OIDC Discovery** | `https://localhost:7103/.well-known/openid-configuration` |
-| **JWKS Endpoint** | `https://localhost:7103/.well-known/jwks.json` |
+| **Puerto** | `https://localhost:7103` (configurado en `appsettings.Development.json`) |
+| **Generación de claves** | Se genera un par de claves RSA efímero de 2048 bits al iniciar. La clave privada vive solo en memoria y se descarta cuando el proceso termina. |
+| **Credenciales de demostración** | Usuario: `admin`, Contraseña: `Platform@2026!` |
+| **Duración del token** | Tokens de acceso: 60 minutos. Tokens de actualización: 30 días. |
+| **Almacenamiento de datos** | Todo el estado (tokens de actualización, JTIs revocados) está en memoria. Reiniciar el servicio limpia todo. |
+| **Descubrimiento OIDC** | `https://localhost:7103/.well-known/openid-configuration` |
+| **Endpoint JWKS** | `https://localhost:7103/.well-known/jwks.json` |
 
-### Verifying the Auth Service Is Running
+### Verificar que el Auth Service Está Funcionando
 
 ```bash
 curl -k https://localhost:7103/api/health/live
-# Expected: {"status":"Healthy","timestamp":"..."}
+# Esperado: {"status":"Healthy","timestamp":"..."}
 ```
 
-The Swagger UI is available at `https://localhost:7103/swagger`.
+La interfaz de Swagger está disponible en `https://localhost:7103/swagger`.
 
 ---
 
-## Running the Users Service
+## Ejecutar el Users Service
 
-### Starting the Service
+### Iniciar el Servicio
 
 ```bash
 dotnet run --project c:/Efra-proyects/users-demo-backstage/src/UsersService/UsersService.csproj
 ```
 
-### Behavior in Development Mode
+### Comportamiento en Modo Desarrollo
 
-| Aspect | Behavior |
+| Aspecto | Comportamiento |
 |---|---|
-| **Port** | `https://localhost:7201` |
-| **Data store** | An in-memory `List<UserEntity>` with two seeded demo users (admin and jane.dev). No database is required. |
-| **JWT validation** | Signature validation is **disabled** (see [JWT Validation Stub](#jwt-validation-stub-for-local-development)). |
-| **Auth Service dependency** | The service does **not** call the Auth Service at runtime in development. Access tokens from the Auth Service are validated locally using the configured issuer and audience values only. |
+| **Puerto** | `https://localhost:7201` |
+| **Almacenamiento de datos** | Un `List<UserEntity>` en memoria con dos usuarios de demostración predefinidos (admin y jane.dev). No se requiere base de datos. |
+| **Validación JWT** | La validación de firma está **deshabilitada** (ver [Simulacro de Validación JWT](#simulacro-de-validación-jwt-para-desarrollo-local)). |
+| **Dependencia del Auth Service** | El servicio **no** llama al Auth Service en tiempo de ejecución en desarrollo. Los tokens de acceso del Auth Service se validan localmente usando solo los valores de emisor y audiencia configurados. |
 | **Swagger UI** | `https://localhost:7201/swagger` |
 
-### Verifying the Users Service Is Running
+### Verificar que el Users Service Está Funcionando
 
 ```bash
 curl -k https://localhost:7201/api/health/live
-# Expected: {"status":"Healthy","timestamp":"..."}
+# Esperado: {"status":"Healthy","timestamp":"..."}
 ```
 
 ---
 
-## JWT Validation Stub for Local Development
+## Simulacro de Validación JWT para Desarrollo Local
 
-In production, the Users Service validates every JWT by:
+En producción, el Users Service valida cada JWT mediante:
 
-1. Fetching the JWKS document from the Auth Service's `/.well-known/jwks.json` endpoint.
-2. Using the RSA public key from the JWKS to verify the token's RS256 signature.
-3. Checking issuer, audience, expiry, and the JWT ID against a blacklist.
+1. Obteniendo el documento JWKS del endpoint `/.well-known/jwks.json` del Auth Service.
+2. Usando la clave pública RSA del JWKS para verificar la firma RS256 del token.
+3. Verificando el emisor, la audiencia, la expiración y el ID del JWT contra una lista negra.
 
-In development, signature validation is **disabled**. This is controlled in `Program.cs`:
+En desarrollo, la validación de firma está **deshabilitada**. Esto se controla en `Program.cs`:
 
 ```csharp
 options.TokenValidationParameters = new()
@@ -173,24 +173,24 @@ options.TokenValidationParameters = new()
     ValidateAudience = true,
     ValidAudience = audience,
     ValidateLifetime = true,
-    ValidateIssuerSigningKey = false,  // <-- stub: no signature check
+    ValidateIssuerSigningKey = false,  // <-- simulacro: sin verificación de firma
     ClockSkew = TimeSpan.FromSeconds(30)
 };
 ```
 
-### What This Means
+### Qué Significa Esto
 
-| Setting | Production | Development |
+| Configuración | Producción | Desarrollo |
 |---|---|---|
-| `ValidateIssuerSigningKey` | `true` — validates against JWKS | `false` — **skipped** |
-| `RequireHttpsMetadata` | `true` | `false` (allows `http` metadata URLs) |
-| Signature verification | RSA-256 against Auth Service public key | **None** — any JWT with matching issuer/audience is accepted |
+| `ValidateIssuerSigningKey` | `true` -- valida contra JWKS | `false` -- **omitido** |
+| `RequireHttpsMetadata` | `true` | `false` (permite URLs de metadatos `http`) |
+| Verificación de firma | RSA-256 contra la clave pública del Auth Service | **Ninguna** -- cualquier JWT con emisor/audiencia coincidentes es aceptado |
 
-This approach lets you develop and test without running a full JWKS infrastructure. The **issuer, audience, and lifetime claims are still enforced**, so tokens must be structurally valid and not expired.
+Este enfoque te permite desarrollar y probar sin ejecutar una infraestructura JWKS completa. Las **claims de emisor, audiencia y duración aún se aplican**, por lo que los tokens deben ser estructuralmente válidos y no estar expirados.
 
-### Obtaining a JWT for Manual Testing
+### Obtener un JWT para Pruebas Manuales
 
-Use the Auth Service's `/api/auth/login` endpoint to get a token that works against the Users Service's development configuration:
+Usa el endpoint `/api/auth/login` del Auth Service para obtener un token que funcione con la configuración de desarrollo del Users Service:
 
 ```bash
 curl -k -X POST https://localhost:7103/api/auth/login \
@@ -198,7 +198,7 @@ curl -k -X POST https://localhost:7103/api/auth/login \
   -d '{"username":"admin","password":"Platform@2026!"}'
 ```
 
-**Response:**
+**Respuesta:**
 
 ```json
 {
@@ -209,34 +209,34 @@ curl -k -X POST https://localhost:7103/api/auth/login \
 }
 ```
 
-Copy the `accessToken` value and use it against Users Service endpoints:
+Copia el valor de `accessToken` y úsalo contra los endpoints del Users Service:
 
 ```bash
 curl -k https://localhost:7201/api/users \
   -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsIm..."
 ```
 
-### Important Caveat
+### Advertencia Importante
 
-Because signature validation is disabled, **any JWT you create locally** (for example, with a tool like `jwt.io`) that has the correct issuer (`https://localhost:7103`) and audience (`users-service-dev`) will be accepted. This is intentional for development convenience but means you should not expose the development port to untrusted networks. CI and staging environments validate signatures properly.
+Debido a que la validación de firma está deshabilitada, **cualquier JWT que crees localmente** (por ejemplo, con una herramienta como `jwt.io`) que tenga el emisor correcto (`https://localhost:7103`) y la audiencia correcta (`users-service-dev`) será aceptado. Esto es intencional para la comodidad en desarrollo, pero significa que no debes exponer el puerto de desarrollo a redes no confiables. Los entornos de CI y staging validan las firmas correctamente.
 
 ---
 
-## End-to-End Test Flow
+## Flujo de Prueba de Extremo a Extremo
 
-A typical local development workflow:
+Un flujo de trabajo de desarrollo local típico:
 
-1. **Start the Auth Service** (in one terminal):
+1. **Inicia el Auth Service** (en una terminal):
    ```bash
    dotnet run --project c:/Efra-proyects/authenthication-demo-backstage/src/AuthService/AuthService.csproj
    ```
 
-2. **Start the Users Service** (in another terminal):
+2. **Inicia el Users Service** (en otra terminal):
    ```bash
    dotnet run --project c:/Efra-proyects/users-demo-backstage/src/UsersService/UsersService.csproj
    ```
 
-3. **Get a token**:
+3. **Obtén un token**:
    ```bash
    TOKEN=$(curl -sk -X POST https://localhost:7103/api/auth/login \
      -H "Content-Type: application/json" \
@@ -244,22 +244,22 @@ A typical local development workflow:
      python -c "import sys,json; print(json.load(sys.stdin)['accessToken'])")
    ```
 
-4. **Call the Users Service**:
+4. **Llama al Users Service**:
    ```bash
    curl -sk https://localhost:7201/api/users -H "Authorization: Bearer $TOKEN"
    ```
 
-5. **Stop both services** with `Ctrl+C` in each terminal.
+5. **Detén ambos servicios** con `Ctrl+C` en cada terminal.
 
 ---
 
-## Using Testcontainers for PostgreSQL
+## Uso de Testcontainers para PostgreSQL
 
-While the Users Service currently uses an in-memory store for development, integration tests should exercise the real PostgreSQL persistence path. [Testcontainers](https://testcontainers.com/) provides throwaway PostgreSQL containers that start on demand and shut down when the test finishes.
+Si bien el Users Service actualmente usa un almacenamiento en memoria para desarrollo, las pruebas de integración deben ejercitar la ruta real de persistencia con PostgreSQL. [Testcontainers](https://testcontainers.com/) proporciona contenedores PostgreSQL desechables que se inician bajo demanda y se detienen cuando la prueba finaliza.
 
-### Adding Testcontainers to the Test Project
+### Agregar Testcontainers al Proyecto de Pruebas
 
-The `tests/` directory is set up for test projects. To add PostgreSQL integration tests, create a test project or add these packages to an existing one:
+El directorio `tests/` está configurado para proyectos de prueba. Para agregar pruebas de integración con PostgreSQL, crea un proyecto de prueba o agrega estos paquetes a uno existente:
 
 ```bash
 dotnet add tests/UsersService.Tests/UsersService.Tests.csproj package Testcontainers.PostgreSql
@@ -268,9 +268,9 @@ dotnet add tests/UsersService.Tests/UsersService.Tests.csproj package Dapper
 dotnet add tests/UsersService.Tests/UsersService.Tests.csproj package xunit
 ```
 
-### Database Fixture Pattern
+### Patrón de Fixture de Base de Datos
 
-Use an `IClassFixture` in xUnit to share a single PostgreSQL container across test methods within a test class:
+Usa un `IClassFixture` en xUnit para compartir un único contenedor PostgreSQL entre los métodos de prueba dentro de una clase de prueba:
 
 ```csharp
 using Testcontainers.PostgreSql;
@@ -331,7 +331,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 }
 ```
 
-### Integration Test Example
+### Ejemplo de Prueba de Integración
 
 ```csharp
 public sealed class UserRepositoryTests : IClassFixture<PostgreSqlFixture>
@@ -375,144 +375,144 @@ public sealed class UserRepositoryTests : IClassFixture<PostgreSqlFixture>
 }
 ```
 
-### Running Tests with Testcontainers
+### Ejecutar Pruebas con Testcontainers
 
 ```bash
-# Ensure Docker Desktop is running, then execute:
+# Asegúrate de que Docker Desktop esté funcionando, luego ejecuta:
 dotnet test tests/UsersService.Tests/UsersService.Tests.csproj
 ```
 
-Testcontainers automatically:
-- Pulls the `postgres:16-alpine` image on first run (cached afterward)
-- Starts a container on a random available port
-- Executes migrations from the fixture
-- Runs all test methods against that container
-- Stops and removes the container when the fixture disposes
+Testcontainers automáticamente:
+- Descarga la imagen `postgres:16-alpine` en la primera ejecución (se almacena en caché después)
+- Inicia un contenedor en un puerto disponible aleatorio
+- Ejecuta las migraciones desde el fixture
+- Ejecuta todos los métodos de prueba contra ese contenedor
+- Detiene y elimina el contenedor cuando el fixture se descarta
 
-> **Performance:** The first run downloads the PostgreSQL image (~100 MB). Subsequent runs start in under 2 seconds. If you need to share one container across multiple test classes, use a `CollectionFixture` instead of `IClassFixture`.
+> **Rendimiento:** La primera ejecución descarga la imagen de PostgreSQL (~100 MB). Las ejecuciones posteriores se inician en menos de 2 segundos. Si necesitas compartir un contenedor entre varias clases de prueba, usa un `CollectionFixture` en lugar de `IClassFixture`.
 
-### Configuration for Testcontainers
+### Configuración para Testcontainers
 
-| Builder Method | Description | Default |
+| Método del Constructor | Descripción | Valor Predeterminado |
 |---|---|---|
-| `WithImage("postgres:16-alpine")` | PostgreSQL image tag | `postgres:16-alpine` |
-| `WithDatabase("users_test")` | Database name | `test` |
-| `WithUsername("test_user")` | Database user | `test` |
-| `WithPassword("test_password")` | User password | `test` |
-| `WithCleanUp(true)` | Remove container after disposal | `true` |
-| `WithPortBinding(5432, true)` | Expose on a random host port (default) | Random |
+| `WithImage("postgres:16-alpine")` | Etiqueta de la imagen PostgreSQL | `postgres:16-alpine` |
+| `WithDatabase("users_test")` | Nombre de la base de datos | `test` |
+| `WithUsername("test_user")` | Usuario de la base de datos | `test` |
+| `WithPassword("test_password")` | Contraseña del usuario | `test` |
+| `WithCleanUp(true)` | Eliminar contenedor después de desechar | `true` |
+| `WithPortBinding(5432, true)` | Exponer en un puerto host aleatorio (predeterminado) | Aleatorio |
 
-> When running locally alongside a manually started PostgreSQL instance, Testcontainers assigns a random host port to avoid conflicts. The `GetConnectionString()` method returns the correct connection string with the dynamic port.
+> Cuando se ejecuta localmente junto con una instancia de PostgreSQL iniciada manualmente, Testcontainers asigna un puerto host aleatorio para evitar conflictos. El método `GetConnectionString()` devuelve la cadena de conexión correcta con el puerto dinámico.
 
 ---
 
-## Configuration Reference
+## Referencia de Configuración
 
-### Development Overrides (`appsettings.Development.json`)
+### Sobrescrituras de Desarrollo (`appsettings.Development.json`)
 
-| Key | Users Service | Auth Service |
+| Clave | Users Service | Auth Service |
 |---|---|---|
 | **Auth:Issuer** | `https://localhost:7103` | `https://localhost:7103` |
 | **Auth:Audience** | `users-service-dev` | `platform-api-dev` |
-| **Auth:AccessTokenLifetimeMinutes** | (uses default 15) | `60` (longer window for debugging) |
+| **Auth:AccessTokenLifetimeMinutes** | (usa el valor predeterminado 15) | `60` (ventana más larga para depuración) |
 | **ConnectionStrings:UsersDb** | `Host=localhost;Port=5432;Database=users_dev;Username=users_svc;Password=dev_password` | N/A |
 | **ConnectionStrings:AuthDb** | N/A | `Host=localhost;Port=5432;Database=auth_dev;Username=auth_svc;Password=dev_password` |
-| **Serilog minimum level** | `Debug` | `Debug` |
+| **Nivel mínimo de Serilog** | `Debug` | `Debug` |
 
-### Port Assignments
+### Asignación de Puertos
 
-| Service | Development | Production (internal) |
+| Servicio | Desarrollo | Producción (interno) |
 |---|---|---|
 | Users Service HTTPS | `7201` | `443` |
 | Auth Service HTTPS | `7103` | `443` |
 | PostgreSQL | `5432` | `5432` |
 
-### Environment Variables
+### Variables de Entorno
 
-Both services respect standard ASP.NET Core environment variables:
+Ambos servicios respetan las variables de entorno estándar de ASP.NET Core:
 
 ```bash
-# Override the listening URLs
+# Sobrescribir las URLs de escucha
 ASPNETCORE_URLS=https://localhost:7201
 
-# Set the environment (defaults to "Production" if not set)
+# Establecer el entorno (el valor predeterminado es "Production" si no se establece)
 ASPNETCORE_ENVIRONMENT=Development
 ```
 
 ---
 
-## Troubleshooting
+## Solución de Problemas
 
 ### "Failed to bind to address https://localhost:7201"
 
-Port conflict. Check what is using the port:
+Conflicto de puerto. Verifica qué está usando el puerto:
 
 ```bash
 netstat -ano | findstr :7201
 ```
 
-Kill the conflicting process or change the port via `Properties/launchSettings.json` or the `ASPNETCORE_URLS` environment variable:
+Finaliza el proceso en conflicto o cambia el puerto mediante `Properties/launchSettings.json` o la variable de entorno `ASPNETCORE_URLS`:
 
 ```bash
 ASPNETCORE_URLS=https://localhost:7202 dotnet run --project src/UsersService/UsersService.csproj
 ```
 
-### "Unable to find a matching algorithm" on `dotnet restore`
+### "Unable to find a matching algorithm" en `dotnet restore`
 
-The project uses floating versions (`10.*`) for some packages. Ensure you have the .NET 10 SDK installed and that the NuGet feed includes the .NET 10 targeting packs. Run:
+El proyecto usa versiones flotantes (`10.*`) para algunos paquetes. Asegúrate de tener instalado el SDK de .NET 10 y que la fuente NuGet incluya los paquetes de destino de .NET 10. Ejecuta:
 
 ```bash
 dotnet --list-sdks
 dotnet restore --force-evaluate
 ```
 
-### "Authorization: Bearer token" returns 401 Unauthorized
+### "Authorization: Bearer token" devuelve 401 Unauthorized
 
-Check the following:
+Verifica lo siguiente:
 
-1. The token has not expired. The Auth Service development config uses a 60-minute access token lifetime. Get a fresh token.
-2. The token's audience matches `users-service-dev`. Tokens issued by the Auth Service in development use audience `platform-api-dev` by default. The Users Service expects `users-service-dev` (configured in `appsettings.Development.json`). Verify both are aligned.
-3. The issuer in the token (`https://localhost:7103`) matches the `Auth:Issuer` value in the Users Service configuration.
+1. El token no ha expirado. La configuración de desarrollo del Auth Service usa una duración de token de acceso de 60 minutos. Obtén un token nuevo.
+2. La audiencia del token coincide con `users-service-dev`. Los tokens emitidos por el Auth Service en desarrollo usan la audiencia `platform-api-dev` por defecto. El Users Service espera `users-service-dev` (configurado en `appsettings.Development.json`). Verifica que ambos estén alineados.
+3. El emisor en el token (`https://localhost:7103`) coincide con el valor de `Auth:Issuer` en la configuración del Users Service.
 
-To inspect a JWT's claims, decode its payload (the second base64 segment):
+Para inspeccionar las claims de un JWT, decodifica su carga útil (el segundo segmento base64):
 
 ```bash
-# Decode JWT payload (paste your token)
-echo "PASTE_YOUR_TOKEN_HERE" | cut -d. -f2 | python -c "import sys,base64,json; padded=sys.stdin.read().strip()+'=='; print(json.dumps(json.loads(base64.urlsafe_b64decode(padded)),indent=2))"
+# Decodificar la carga útil del JWT (pega tu token)
+echo "PEGA_TU_TOKEN_AQUI" | cut -d. -f2 | python -c "import sys,base64,json; padded=sys.stdin.read().strip()+'=='; print(json.dumps(json.loads(base64.urlsafe_b64decode(padded)),indent=2))"
 ```
 
-### Docker Desktop is not running (Testcontainers)
+### Docker Desktop no está ejecutándose (Testcontainers)
 
-Testcontainers requires a running Docker daemon. If tests fail with a Docker connectivity error:
+Testcontainers requiere un demonio Docker en ejecución. Si las pruebas fallan con un error de conectividad Docker:
 
-1. Start Docker Desktop.
-2. Wait for the Docker engine status to show "Running".
-3. Re-run the tests.
+1. Inicia Docker Desktop.
+2. Espera a que el estado del motor Docker muestre "Running".
+3. Vuelve a ejecutar las pruebas.
 
-To verify Docker is available:
+Para verificar que Docker está disponible:
 
 ```bash
 docker info
 ```
 
-### "401" on Auth Service endpoints after restart
+### "401" en endpoints del Auth Service después de reiniciar
 
-The Auth Service stores refresh tokens and revoked JTI IDs in memory. Restarting the service clears all state. Obtain a new token by calling `/api/auth/login` again.
+El Auth Service almacena tokens de actualización e IDs JTI revocados en memoria. Reiniciar el servicio limpia todo el estado. Obtén un nuevo token llamando a `/api/auth/login` nuevamente.
 
-### "Connectivity error" between services
+### "Error de conectividad" entre servicios
 
-If you are running both services in separate terminals on the same machine, ensure:
+Si estás ejecutando ambos servicios en terminales separadas en la misma máquina, asegúrate de:
 
-- The Auth Service is started **before** the Users Service.
-- Both are using HTTPS with self-signed dev certificates. ASP.NET Core generates these automatically on first run. If prompted, trust the dev certificate:
+- El Auth Service se inicia **antes** que el Users Service.
+- Ambos usan HTTPS con certificados de desarrollo autofirmados. ASP.NET Core los genera automáticamente en la primera ejecución. Si se solicita, confía en el certificado de desarrollo:
 
 ```bash
 dotnet dev-certs https --trust
 ```
 
-### No `launchSettings.json` exists
+### No existe `launchSettings.json`
 
-Both projects can be run directly with `dotnet run` as shown above. If you prefer Visual Studio launch profiles, you can add a `Properties/launchSettings.json`:
+Ambos proyectos se pueden ejecutar directamente con `dotnet run` como se muestra arriba. Si prefieres perfiles de inicio de Visual Studio, puedes agregar un `Properties/launchSettings.json`:
 
 ```json
 {
@@ -533,11 +533,11 @@ Both projects can be run directly with `dotnet run` as shown above. If you prefe
 
 ---
 
-## Related Documents
+## Documentos Relacionados
 
-- [Developer Guide](developer-guide.md) — architecture walkthrough for new team members
-- [Testing Guide](testing.md) — testing strategy, frameworks, and running tests
-- [How to Debug](how-to-debug.md) — debugging techniques and common issues
-- [Security Architecture](../architecture/security.md) — authentication flow and authorization model
-- [System Context](../architecture/context.md) — how the service fits into the platform
-- [Variables & Configuration](../api/variables.md) — full configuration key reference
+- [Guía del Desarrollador](developer-guide.md) -- recorrido arquitectónico para nuevos miembros del equipo
+- [Guía de Pruebas](testing.md) -- estrategia de pruebas, frameworks y ejecución de pruebas
+- [Cómo Depurar](how-to-debug.md) -- técnicas de depuración y problemas comunes
+- [Arquitectura de Seguridad](../architecture/security.md) -- flujo de autenticación y modelo de autorización
+- [Contexto del Sistema](../architecture/context.md) -- cómo encaja el servicio en la plataforma
+- [Variables y Configuración](../api/variables.md) -- referencia completa de claves de configuración

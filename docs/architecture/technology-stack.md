@@ -1,115 +1,115 @@
-# Technology Stack
+# Stack Tecnológico
 
-## Scope
+## Alcance
 
-Complete inventory of technologies used by the Users Service, including runtime, libraries, infrastructure, and development tools. Serves as the authoritative reference for dependency management.
+Inventario completo de las tecnologías utilizadas por el Users Service, incluyendo runtime, librerías, infraestructura y herramientas de desarrollo. Sirve como referencia autorizada para la gestión de dependencias.
 
-## Technology Lifecycle Policy
+## Política del Ciclo de Vida de las Tecnologías
 
-| Phase | Description | Action |
+| Fase | Descripción | Acción |
 |---|---|---|
-| **Adopt** | Recommended for new projects | Use freely |
-| **Trial** | Under evaluation | Use in non-critical paths |
-| **Hold** | In use but not for new work | Plan migration |
-| **Deprecate** | Being phased out | Migrate away |
+| **Adopt** | Recomendado para nuevos proyectos | Usar libremente |
+| **Trial** | Bajo evaluación | Usar en rutas no críticas |
+| **Hold** | En uso pero no para trabajo nuevo | Planificar migración |
+| **Deprecate** | En fase de eliminación | Migrar hacia otra |
 
 ---
 
-## 1. Runtime & Framework
+## 1. Runtime y Framework
 
-| Technology | Version | Phase | Purpose |
+| Tecnología | Versión | Fase | Propósito |
 |---|---|---|---|
-| **.NET SDK** | 10.0.100 | Adopt | Runtime and base class library |
-| **ASP.NET Core** | 10.0 | Adopt | Web API framework (Minimal APIs) |
-| **C#** | 13 | Adopt | Primary programming language |
-| **gRPC** | 2.x | Adopt | Client for Auth Service token validation |
+| **.NET SDK** | 10.0.100 | Adopt | Runtime y biblioteca de clases base |
+| **ASP.NET Core** | 10.0 | Adopt | Framework Web API (Minimal APIs) |
+| **C#** | 13 | Adopt | Lenguaje de programación principal |
+| **gRPC** | 2.x | Adopt | Cliente para validación de tokens del Auth Service |
 
-## 2. Core Libraries
+## 2. Librerías Principales
 
-| Package | Version | Phase | Purpose |
+| Paquete | Versión | Fase | Propósito |
 |---|---|---|---|
-| `Dapper` | 2.x | Adopt | Lightweight ORM for PostgreSQL |
-| `Npgsql` | 9.x | Adopt | .NET data provider for PostgreSQL |
-| `FluentValidation` | 11.x | Adopt | Request DTO validation |
-| `Azure.Messaging.ServiceBus` | 7.x | Adopt | Event publisher and consumer |
-| `Azure.Security.KeyVault.Secrets` | 4.x | Adopt | Key Vault secret retrieval |
-| `Azure.Identity` | 1.x | Adopt | Managed Identity authentication |
-| `Microsoft.Graph` | 5.x | Adopt | Entra ID profile enrichment |
-| `Grpc.Net.Client` | 2.x | Adopt | gRPC client for Auth Service |
-| `Polly` | 8.x | Adopt | Resilience policies (circuit breaker, retry) |
-| `MessagePack` | 2.x | Adopt | Binary serialization for caching |
+| `Dapper` | 2.x | Adopt | ORM ligero para PostgreSQL |
+| `Npgsql` | 9.x | Adopt | Proveedor de datos .NET para PostgreSQL |
+| `FluentValidation` | 11.x | Adopt | Validación de DTOs de solicitud |
+| `Azure.Messaging.ServiceBus` | 7.x | Adopt | Publicador y consumidor de eventos |
+| `Azure.Security.KeyVault.Secrets` | 4.x | Adopt | Recuperación de secretos de Key Vault |
+| `Azure.Identity` | 1.x | Adopt | Autenticación Managed Identity |
+| `Microsoft.Graph` | 5.x | Adopt | Enriquecimiento de perfiles de Entra ID |
+| `Grpc.Net.Client` | 2.x | Adopt | Cliente gRPC para Auth Service |
+| `Polly` | 8.x | Adopt | Políticas de resiliencia (circuit breaker, reintentos) |
+| `MessagePack` | 2.x | Adopt | Serialización binaria para caché |
 
-## 3. Observability
+## 3. Observabilidad
 
-| Technology | Version | Phase | Purpose |
+| Tecnología | Versión | Fase | Propósito |
 |---|---|---|---|
-| **OpenTelemetry SDK** | 1.x | Adopt | Distributed tracing (W3C Trace Context) |
-| **Serilog** | 8.x | Adopt | Structured JSON logging |
-| **Prometheus.Client** | 5.x | Adopt | Metrics exposition |
+| **OpenTelemetry SDK** | 1.x | Adopt | Trazado distribuido (W3C Trace Context) |
+| **Serilog** | 8.x | Adopt | Registro estructurado en JSON |
+| **Prometheus.Client** | 5.x | Adopt | Exposición de métricas |
 
-## 4. Infrastructure (Azure)
+## 4. Infraestructura (Azure)
 
-| Service | SKU / Tier | Purpose |
+| Servicio | SKU / Nivel | Propósito |
 |---|---|---|
-| **Azure Kubernetes Service** | Standard_D4s_v5 | Container orchestration |
-| **Azure Database for PostgreSQL** | Flexible Server, General Purpose | User profile storage |
-| **Azure Service Bus** | Premium, zone-redundant | Event publishing and subscription |
-| **Azure Key Vault** | Standard | Connection strings and secrets |
-| **Azure Traffic Manager** | Priority routing | Multi-region failover |
-| **Azure Container Registry** | Premium, geo-replicated | Docker image storage |
+| **Azure Kubernetes Service** | Standard_D4s_v5 | Orquestación de contenedores |
+| **Azure Database for PostgreSQL** | Flexible Server, Propósito General | Almacenamiento de perfiles de usuario |
+| **Azure Service Bus** | Premium, redundante entre zonas | Publicación y suscripción de eventos |
+| **Azure Key Vault** | Standard | Cadenas de conexión y secretos |
+| **Azure Traffic Manager** | Enrutamiento por prioridad | Conmutación por error multi-región |
+| **Azure Container Registry** | Premium, con replicación geográfica | Almacenamiento de imágenes Docker |
 
-## 5. Development & Quality
+## 5. Desarrollo y Calidad
 
-| Technology | Version | Phase | Purpose |
+| Tecnología | Versión | Fase | Propósito |
 |---|---|---|---|
-| **xUnit** | 2.x | Adopt | Unit and integration testing |
-| **FluentAssertions** | 7.x | Adopt | Readable test assertions |
-| **NSubstitute** | 5.x | Adopt | Mocking framework |
-| **Testcontainers** | 4.x | Adopt | Integration tests with PostgreSQL |
-| **SonarQube** | Cloud | Adopt | Static code analysis |
-| **Mend (WhiteSource)** | Cloud | Adopt | Open-source vulnerability scanning |
+| **xUnit** | 2.x | Adopt | Pruebas unitarias y de integración |
+| **FluentAssertions** | 7.x | Adopt | Afirmaciones de prueba legibles |
+| **NSubstitute** | 5.x | Adopt | Framework de simulación (mocking) |
+| **Testcontainers** | 4.x | Adopt | Pruebas de integración con PostgreSQL |
+| **SonarQube** | Cloud | Adopt | Análisis estático de código |
+| **Mend (WhiteSource)** | Cloud | Adopt | Escaneo de vulnerabilidades de código abierto |
 
 ## 6. CI/CD
 
-| Technology | Purpose |
+| Tecnología | Propósito |
 |---|---|
-| **Azure DevOps Pipelines** | CI/CD orchestration |
-| **Docker BuildX** | Multi-arch container image builds |
-| **Cosign** | Container image signing |
+| **Azure DevOps Pipelines** | Orquestación CI/CD |
+| **Docker BuildX** | Construcción de imágenes de contenedor multi-arquitectura |
+| **Cosign** | Firma de imágenes de contenedor |
 
-## 7. Documentation
+## 7. Documentación
 
-| Technology | Purpose |
+| Tecnología | Propósito |
 |---|---|
-| **MkDocs** | Static site generator |
-| **Material for MkDocs** | Theme and UI |
-| **Mermaid** | Diagrams-as-code |
-| **OpenAPI 3.1** | API specification |
-| **Swagger UI** | Interactive API exploration (dev only) |
+| **MkDocs** | Generador de sitios estáticos |
+| **Material for MkDocs** | Tema e interfaz de usuario |
+| **Mermaid** | Diagramas como código |
+| **OpenAPI 3.1** | Especificación de API |
+| **Swagger UI** | Exploración interactiva de API (solo desarrollo) |
 
-## Version Compatibility Matrix
+## Matriz de Compatibilidad de Versiones
 
-| .NET Version | C# Version | ASP.NET Core | Support Until |
+| Versión de .NET | Versión de C# | ASP.NET Core | Soporte Hasta |
 |---|---|---|---|
 | 10.0 | 13 | 10.0 | LTS — Nov 2027 |
 | 9.0 | 13 | 9.0 | STS — May 2026 |
 | 8.0 | 12 | 8.0 | LTS — Nov 2026 |
 
-> **Current target:** .NET 10.0
+> **Objetivo actual:** .NET 10.0
 
-## Dependency Update Policy
+## Política de Actualización de Dependencias
 
-| Update Type | Frequency | Approval |
+| Tipo de Actualización | Frecuencia | Aprobación |
 |---|---|---|
-| **Patch (security)** | Within 48 hours | Auto-merge if CI passes |
-| **Patch (non-security)** | Weekly | Auto-merge |
-| **Minor** | Monthly | Team lead review |
-| **Major** | Quarterly (planned) | Architecture review |
-| **.NET SDK** | Within 2 weeks | CI + staging validation |
+| **Parche (seguridad)** | Dentro de 48 horas | Fusión automática si CI pasa |
+| **Parche (no seguridad)** | Semanal | Fusión automática |
+| **Menor** | Mensual | Revisión del líder del equipo |
+| **Mayor** | Trimestral (planificada) | Revisión de arquitectura |
+| **.NET SDK** | Dentro de 2 semanas | Validación CI + staging |
 
-## Related Documents
+## Documentos Relacionados
 
-- [Architecture Overview](overview.md)
-- [ADR-001 — PostgreSQL over MongoDB](../adr/ADR-001.md)
-- [Coding Standards](../decisions/coding-standards.md)
-- [Security Guidelines](../decisions/security-guidelines.md)
+- [Visión General de la Arquitectura](overview.md)
+- [ADR-001 — PostgreSQL sobre MongoDB](../adr/ADR-001.md)
+- [Estándares de Codificación](../decisions/coding-standards.md)
+- [Directrices de Seguridad](../decisions/security-guidelines.md)

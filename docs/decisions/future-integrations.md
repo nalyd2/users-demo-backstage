@@ -1,162 +1,162 @@
-# Future Integrations — Users Service
+# Integraciones Futuras — Users Service
 
-- **Status:** Draft (Exploratory)
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Borrador (Exploratorio)
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Overview
+## Visión General
 
-This document catalogs planned and exploratory integrations for the Users Service. These represent strategic directions for user management capabilities.
+Este documento cataloga las integraciones planificadas y exploratorias para el Users Service. Estas representan direcciones estratégicas para las capacidades de gestión de usuarios.
 
 ---
 
-## 1. SCIM 2.0 Provisioning (Inbound from IdPs)
+## 1. Aprovisionamiento SCIM 2.0 (Entrante desde IdPs)
 
-### Motivation
+### Motivación
 
-Implement SCIM 2.0 server (RFC 7643, RFC 7644) to enable automated user provisioning from identity providers such as Entra ID, Okta, and Azure AD B2C. This eliminates manual user creation and ensures timely access revocation.
+Implementar un servidor SCIM 2.0 (RFC 7643, RFC 7644) para habilitar el aprovisionamiento automatizado de usuarios desde proveedores de identidad como Entra ID, Okta y Azure AD B2C. Esto elimina la creación manual de usuarios y garantiza la revocación oportuna de accesos.
 
-### Integration Approach
+### Enfoque de Integración
 
-- Implement SCIM 2.0 endpoints: `POST /scim/v2/Users`, `GET /scim/v2/Users`, `PATCH /scim/v2/Users/{id}`, `DELETE /scim/v2/Users/{id}`.
-- Support core SCIM schema with custom extensions for tenant_id and roles.
-- Attribute mapping layer between SCIM schema and Users Service profile model.
-- Membership mapping from SCIM groups to RBAC roles.
-- Event-driven: SCIM operations publish `user.created`, `user.updated`, `user.deleted` events.
+- Implementar endpoints SCIM 2.0: `POST /scim/v2/Users`, `GET /scim/v2/Users`, `PATCH /scim/v2/Users/{id}`, `DELETE /scim/v2/Users/{id}`.
+- Compatibilidad con el esquema SCIM base con extensiones personalizadas para tenant_id y roles.
+- Capa de mapeo de atributos entre el esquema SCIM y el modelo de perfil del Users Service.
+- Mapeo de membresía de grupos SCIM a roles RBAC.
+- Orientado a eventos: las operaciones SCIM publican eventos `user.created`, `user.updated`, `user.deleted`.
 
-### Implementation Considerations
+### Consideraciones de Implementación
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| Schema | Core User + Enterprise User extension + custom tenant extension |
-| Pagination | Cursor pagination for `GET /Users` and `GET /Groups` |
-| Bulk | RFC 7644 bulk operations (configurable maxOperations) |
-| Authentication | OAuth 2.0 Bearer Token (pre-configured SCIM clients) |
-| Filtering | Support `filter` parameter for userName, externalId, active |
+| Esquema | Usuario base + extensión de Usuario Empresarial + extensión de inquilino personalizada |
+| Paginación | Paginación por cursor para `GET /Users` y `GET /Groups` |
+| Lotes | Operaciones por lote RFC 7644 (maxOperations configurable) |
+| Autenticación | OAuth 2.0 Bearer Token (clientes SCIM preconfigurados) |
+| Filtrado | Compatibilidad con parámetro `filter` para userName, externalId, active |
 
-### Risks
+### Riesgos
 
-- Entra ID SCIM provisioning requires specific schema discovery and attribute mapping.
-- SCIM standards interpretation varies between providers; provider-specific testing required.
-- Bulk operations require careful error handling and idempotency.
+- El aprovisionamiento SCIM de Entra ID requiere descubrimiento de esquema específico y mapeo de atributos.
+- La interpretación de los estándares SCIM varía entre proveedores; se requieren pruebas específicas por proveedor.
+- Las operaciones por lote requieren manejo cuidadoso de errores e idempotencia.
 
-### Estimated Effort: 6-8 weeks.
-
----
-
-## 2. SCIM 2.0 Provisioning (Outbound to Downstream Systems)
-
-### Motivation
-
-Publish user profile data to downstream HR systems, identity governance platforms, and directory services via SCIM 2.0 client calls.
-
-### Integration Approach
-
-- Implement SCIM 2.0 client that publishes user changes to configured SCIM endpoints.
-- Retry with exponential backoff for failed calls.
-- Dead-letter queue for persistently failing targets.
-
-### Estimated Effort: 4-6 weeks.
+### Esfuerzo Estimado: 6-8 semanas.
 
 ---
 
-## 3. Okta / Auth0 User Store Integration
+## 2. Aprovisionamiento SCIM 2.0 (Saliente a Sistemas Posteriores)
 
-### Motivation
+### Motivación
 
-Synchronize user profiles with Okta or Auth0 universal directory for organizations that use these as their primary identity store instead of Entra ID.
+Publicar datos de perfil de usuario a sistemas de RRHH posteriores, plataformas de gobierno de identidad y servicios de directorio mediante llamadas de cliente SCIM 2.0.
 
-### Integration Approach
+### Enfoque de Integración
 
-- Implement user store synchronization adapter with Okta API or Auth0 Management API.
-- Full sync on initial setup, delta sync via webhook events or scheduled polling.
-- Conflict resolution strategy: last-write-wins with configurable source priority.
+- Implementar cliente SCIM 2.0 que publique cambios de usuario en endpoints SCIM configurados.
+- Reintento con retroceso exponencial para llamadas fallidas.
+- Cola de mensajes fallidos (dead-letter) para destinos con fallos persistentes.
 
-### Estimated Effort: 4-6 weeks per provider.
-
----
-
-## 4. External HR System Integration (Workday, BambooHR)
-
-### Motivation
-
-Automate user lifecycle management based on HR events: hire (create user), transfer (update department/role), terminate (deactivate user).
-
-### Integration Approach
-
-- Scheduled sync (daily) from HR system API.
-- Event-driven sync via webhook (if supported by HR system).
-- HR attribute mapping to Users Service profile model.
-- Approval workflow for HR-triggered changes.
-
-### Risks
-
-- HR systems have different data models and API capabilities.
-- HR data quality may require validation and cleanup before application.
-- Compliance with data retention and privacy regulations.
-
-### Estimated Effort: 6-8 weeks per HR system.
+### Esfuerzo Estimado: 4-6 semanas.
 
 ---
 
-## 5. User Groups and Dynamic Group Membership
+## 3. Integración con Almacén de Usuarios de Okta / Auth0
 
-### Motivation
+### Motivación
 
-Support group-based authorization with both static (manually assigned) and dynamic (rule-based) group membership.
+Sincronizar perfiles de usuario con el directorio universal de Okta o Auth0 para organizaciones que utilizan estos como su almacén de identidad principal en lugar de Entra ID.
 
-### Integration Approach
+### Enfoque de Integración
 
-- Group CRUD API: `POST/GET/PUT/DELETE /api/v2/groups`.
-- Dynamic group rules: expression-based membership (e.g., `department == "Engineering"`).
-- Membership evaluation engine evaluates rules on user create/update and on schedule.
-- Group membership changes publish events for downstream consumers.
+- Implementar adaptador de sincronización de almacén de usuarios con API de Okta o API de Gestión de Auth0.
+- Sincronización completa en la configuración inicial, sincronización delta mediante eventos webhook o sondeo programado.
+- Estrategia de resolución de conflictos: última escritura gana con prioridad de origen configurable.
 
-### Estimated Effort: 8-10 weeks.
-
----
-
-## 6. Approval Workflows for User Changes
-
-### Motivation
-
-Enable multi-step approval workflows for sensitive user operations: role changes, permission escalations, account recovery.
-
-### Integration Approach
-
-- Workflow state machine: pending -> approved/rejected -> executed/rolled back.
-- Notifications to approvers via notification service (email, Slack).
-- Configurable approval chains (single approver, multiple approvers, manager approval).
-- Audit trail for all approval actions.
-
-### Estimated Effort: 6-8 weeks.
+### Esfuerzo Estimado: 4-6 semanas por proveedor.
 
 ---
 
-## 7. Entra ID Identity Protection Integration
+## 4. Integración con Sistemas de RRHH Externos (Workday, BambooHR)
 
-### Motivation
+### Motivación
 
-Integrate with Entra ID Identity Protection signals (risky user, risky sign-in) to automatically flag or restrict user accounts.
+Automatizar la gestión del ciclo de vida del usuario basada en eventos de RRHH: contratación (crear usuario), transferencia (actualizar departamento/rol), terminación (desactivar usuario).
 
-### Integration Approach
+### Enfoque de Integración
 
-- Poll Entra ID Identity Protection API for risk detections.
-- Map risk levels to Users Service actions: low risk (log only), medium risk (flag user), high risk (restrict user).
-- Event-driven: publish `user.risk_assessed` event for downstream response.
+- Sincronización programada (diaria) desde la API del sistema de RRHH.
+- Sincronización basada en eventos mediante webhook (si el sistema de RRHH lo admite).
+- Mapeo de atributos de RRHH al modelo de perfil del Users Service.
+- Flujo de aprobación para cambios desencadenados por RRHH.
 
-### Estimated Effort: 4-6 weeks.
+### Riesgos
+
+- Los sistemas de RRHH tienen diferentes modelos de datos y capacidades de API.
+- La calidad de los datos de RRHH puede requerir validación y limpieza antes de su aplicación.
+- Cumplimiento con regulaciones de retención de datos y privacidad.
+
+### Esfuerzo Estimado: 6-8 semanas por sistema de RRHH.
 
 ---
 
-## Integration Priority Matrix
+## 5. Grupos de Usuarios y Membresía Dinámica de Grupos
 
-| Integration | Value | Effort | Risk | Priority |
+### Motivación
+
+Compatibilidad con autorización basada en grupos tanto con membresía estática (asignada manualmente) como dinámica (basada en reglas).
+
+### Enfoque de Integración
+
+- API CRUD de grupos: `POST/GET/PUT/DELETE /api/v2/groups`.
+- Reglas de grupos dinámicos: membresía basada en expresiones (ej., `department == "Engineering"`).
+- Motor de evaluación de membresía que evalúa reglas en la creación/actualización de usuario y según programación.
+- Los cambios de membresía de grupo publican eventos para consumidores posteriores.
+
+### Esfuerzo Estimado: 8-10 semanas.
+
+---
+
+## 6. Flujos de Aprobación para Cambios de Usuario
+
+### Motivación
+
+Habilitar flujos de aprobación de varios pasos para operaciones de usuario sensibles: cambios de rol, escalaciones de permisos, recuperación de cuenta.
+
+### Enfoque de Integración
+
+- Máquina de estados de flujo de trabajo: pendiente -> aprobado/rechazado -> ejecutado/revertido.
+- Notificaciones a aprobadores mediante el servicio de notificaciones (correo electrónico, Slack).
+- Cadenas de aprobación configurables (aprobador único, múltiples aprobadores, aprobación del gerente).
+- Registro de auditoría para todas las acciones de aprobación.
+
+### Esfuerzo Estimado: 6-8 semanas.
+
+---
+
+## 7. Integración con Entra ID Identity Protection
+
+### Motivación
+
+Integrar señales de Entra ID Identity Protection (usuario riesgoso, inicio de sesión riesgoso) para marcar o restringir automáticamente cuentas de usuario.
+
+### Enfoque de Integración
+
+- Consultar la API de Entra ID Identity Protection para detecciones de riesgo.
+- Mapear niveles de riesgo a acciones del Users Service: riesgo bajo (solo registrar), riesgo medio (marcar usuario), riesgo alto (restringir usuario).
+- Orientado a eventos: publicar evento `user.risk_assessed` para respuesta posterior.
+
+### Esfuerzo Estimado: 4-6 semanas.
+
+---
+
+## Matriz de Prioridades de Integración
+
+| Integración | Valor | Esfuerzo | Riesgo | Prioridad |
 |---|---|---|---|---|
-| SCIM 2.0 (Inbound) | High | Medium | Medium | Q4 2026 |
-| User Groups | High | High | Medium | Q1 2027 |
-| HR System Integration | High | High | Medium | Q2 2027 |
-| Approval Workflows | Medium | Medium | Low | Q2 2027 |
-| SCIM 2.0 (Outbound) | Medium | Medium | Medium | TBD |
-| Okta/Auth0 Integration | Medium | Medium | Medium | TBD |
-| Identity Protection | Medium | Medium | Low | TBD |
+| SCIM 2.0 (Entrante) | Alto | Medio | Medio | Q4 2026 |
+| Grupos de Usuarios | Alto | Alto | Medio | Q1 2027 |
+| Integración con Sistemas de RRHH | Alto | Alto | Medio | Q2 2027 |
+| Flujos de Aprobación | Medio | Medio | Bajo | Q2 2027 |
+| SCIM 2.0 (Saliente) | Medio | Medio | Medio | TBD |
+| Integración Okta/Auth0 | Medio | Medio | Medio | TBD |
+| Identity Protection | Medio | Medio | Bajo | TBD |

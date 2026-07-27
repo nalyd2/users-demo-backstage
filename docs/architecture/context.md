@@ -1,159 +1,159 @@
-# System Context
+# Contexto del Sistema
 
-## Scope
+## Alcance
 
-This document defines the **system context** of the Users Service — its boundaries, external dependencies, and the nature of its interactions with users, the Authentication Service, and other platform systems.
+Este documento define el **contexto del sistema** del Users Service — sus límites, dependencias externas y la naturaleza de sus interacciones con los usuarios, el Authentication Service y otros sistemas de la plataforma.
 
-## C4 Model — Level 1: System Context Diagram
+## Modelo C4 — Nivel 1: Diagrama de Contexto del Sistema
 
 ```mermaid
 C4Context
     title System Context — Users Service (users-service)
 
-    Person(platform_operator, "Platform Operator", "Administrator managing<br/>user accounts, roles,<br/>and permissions.")
-    Person(platform_user, "Platform User", "Views and edits their<br/>own profile.")
-    Person(sre, "Platform SRE", "Monitors and operates<br/>platform services.")
+    Person(platform_operator, "Platform Operator", "Administrador que gestiona<br/>cuentas de usuario, roles,<br/>y permisos.")
+    Person(platform_user, "Platform User", "Ve y edita su<br/>propio perfil.")
+    Person(sre, "Platform SRE", "Monitorea y opera<br/>los servicios de la plataforma.")
 
     Enterprise_Boundary(enterprise, "Contoso Corp") {
         System_Boundary(idp, "Internal Developer Platform (IDP)") {
-            System(users_service, "Users Service", "User profile CRUD,<br/>lifecycle management,<br/>role assignments,<br/>audit trail.")
+            System(users_service, "Users Service", "CRUD de perfiles de usuario,<br/>gestión del ciclo de vida,<br/>asignación de roles,<br/>registro de auditoría.")
 
-            System(auth_service, "Authentication Service", "Core IAM — issues JWTs,<br/>manages refresh tokens,<br/>publishes auth events.")
-            System(api_gateway, "API Gateway", "Entry point for all<br/>platform HTTP requests.")
-            System(notification_service, "Notification Service", "Sends welcome emails,<br/>password resets, account<br/>notifications.")
-            System(audit_service, "Audit Service", "Collects immutable<br/>audit logs for compliance.")
-            System(message_bus, "Message Bus", "Azure Service Bus.<br/>Async event routing.")
+            System(auth_service, "Authentication Service", "IAM central — emite JWTs,<br/>gestiona tokens de actualización,<br/>publica eventos de autenticación.")
+            System(api_gateway, "API Gateway", "Punto de entrada para todas<br/>las solicitudes HTTP de la plataforma.")
+            System(notification_service, "Notification Service", "Envía correos de bienvenida,<br/>restablecimientos de contraseña, notificaciones<br/>de cuenta.")
+            System(audit_service, "Audit Service", "Recopila registros de auditoría<br/>inmutables para cumplimiento normativo.")
+            System(message_bus, "Message Bus", "Azure Service Bus.<br/>Enrutamiento asíncrono de eventos.")
         }
 
-        System_Ext(entra_id, "Azure AD / Entra ID", "Corporate IdP.<br/>Employee directory.")
-        System_Ext(key_vault, "Azure Key Vault", "Secrets management.<br/>Connection strings,<br/>API keys.")
-        System_Ext(postgres, "PostgreSQL 16", "Users database.<br/>Profiles, roles,<br/>tenant data, audit log.")
-        System_Ext(graph_api, "Microsoft Graph API", "Enriches user profiles<br/>with Entra ID data<br/>(photo, department, etc.).")
+        System_Ext(entra_id, "Azure AD / Entra ID", "IdP corporativo.<br/>Directorio de empleados.")
+        System_Ext(key_vault, "Azure Key Vault", "Gestión de secretos.<br/>Cadenas de conexión,<br/>claves de API.")
+        System_Ext(postgres, "PostgreSQL 16", "Base de datos de usuarios.<br/>Perfiles, roles,<br/>datos de tenant, registro de auditoría.")
+        System_Ext(graph_api, "Microsoft Graph API", "Enriquece perfiles de usuario<br/>con datos de Entra ID<br/>(foto, departamento, etc.).")
 
-        System_Ext(grafana, "Grafana", "Dashboards and<br/>alerting visualization.")
-        System_Ext(prometheus, "Prometheus", "Metrics collection.")
-        System_Ext(elastic, "Elastic Stack", "Centralized logging.")
-        System_Ext(pagerduty, "PagerDuty", "On-call alerting.")
+        System_Ext(grafana, "Grafana", "Visualización de paneles<br/>y alertas.")
+        System_Ext(prometheus, "Prometheus", "Recolección de métricas.")
+        System_Ext(elastic, "Elastic Stack", "Registro centralizado de logs.")
+        System_Ext(pagerduty, "PagerDuty", "Alertas de guardia.")
     }
 
-    Rel(platform_operator, api_gateway, "CRUD users via", "HTTPS / JWT / RBAC")
-    Rel(platform_user, api_gateway, "View/edit own profile", "HTTPS / JWT")
-    Rel(sre, grafana, "Monitors via", "HTTPS")
+    Rel(platform_operator, api_gateway, "CRUD de usuarios mediante", "HTTPS / JWT / RBAC")
+    Rel(platform_user, api_gateway, "Ver/editar perfil propio", "HTTPS / JWT")
+    Rel(sre, grafana, "Monitorea mediante", "HTTPS")
 
-    Rel(api_gateway, users_service, "Routes requests to", "mTLS / HTTPS")
-    Rel(api_gateway, auth_service, "Validates JWT at edge", "gRPC / mTLS")
+    Rel(api_gateway, users_service, "Enruta solicitudes a", "mTLS / HTTPS")
+    Rel(api_gateway, auth_service, "Valida JWT en el borde", "gRPC / mTLS")
 
-    Rel(users_service, auth_service, "Validates JWT with", "gRPC / mTLS")
-    Rel(users_service, key_vault, "Reads DB credentials", "Managed Identity")
-    Rel(users_service, postgres, "Stores user data in", "TLS 1.3")
-    Rel(users_service, entra_id, "Enriches profiles via", "Microsoft Graph API")
-    Rel(users_service, graph_api, "Syncs with", "REST / OAuth2")
+    Rel(users_service, auth_service, "Valida JWT con", "gRPC / mTLS")
+    Rel(users_service, key_vault, "Lee credenciales de BD", "Managed Identity")
+    Rel(users_service, postgres, "Almacena datos de usuario en", "TLS 1.3")
+    Rel(users_service, entra_id, "Enriquece perfiles mediante", "Microsoft Graph API")
+    Rel(users_service, graph_api, "Sincroniza con", "REST / OAuth2")
 
-    Rel(auth_service, message_bus, "Publishes events to", "AMQP 1.0")
-    Rel(message_bus, users_service, "Delivers auth events", "AMQP 1.0")
-    Rel(users_service, notification_service, "Triggers welcome/reset", "gRPC / mTLS")
+    Rel(auth_service, message_bus, "Publica eventos en", "AMQP 1.0")
+    Rel(message_bus, users_service, "Entrega eventos de autenticación", "AMQP 1.0")
+    Rel(users_service, notification_service, "Dispara bienvenida/restablecimiento", "gRPC / mTLS")
 
-    Rel(users_service, prometheus, "Scraped by", "HTTP /metrics")
-    Rel(users_service, elastic, "Streams logs to", "Filebeat")
-    Rel(users_service, pagerduty, "Triggers alerts via", "Webhook")
+    Rel(users_service, prometheus, "Recolectado por", "HTTP /metrics")
+    Rel(users_service, elastic, "Transmite logs a", "Filebeat")
+    Rel(users_service, pagerduty, "Dispara alertas mediante", "Webhook")
 
     UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="2")
 ```
 
-## External System Interactions
+## Interacciones con Sistemas Externos
 
-### 1. Authentication Service (Internal — Platform)
+### 1. Authentication Service (Interno — Plataforma)
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| **Direction** | Outbound (depends on) |
-| **Protocol** | gRPC with mTLS |
-| **Purpose** | **JWT Validation:** Every authenticated request to the Users Service requires a valid JWT. The service calls `TokenValidator.ValidateToken()` via gRPC to verify the token signature, expiry, and claims |
-| **Fallback** | Local JWKS cache (5 min TTL). If Auth Service is unreachable > 5 min, service returns `503 Service Unavailable` for authenticated endpoints |
-| **Circuit Breaker** | 5 consecutive failures → circuit open for 30s → half-open probe → close or reopen |
-| **SLA** | Auth Service must respond within p99 < 10ms for token validation |
+| **Dirección** | Saliente (depende de) |
+| **Protocolo** | gRPC con mTLS |
+| **Propósito** | **Validación JWT:** Cada solicitud autenticada al Users Service requiere un JWT válido. El servicio llama a `TokenValidator.ValidateToken()` mediante gRPC para verificar la firma, expiración y claims del token |
+| **Plan de Contingencia** | Caché JWKS local (TTL de 5 min). Si el Auth Service no está disponible > 5 min, el servicio devuelve `503 Service Unavailable` para endpoints autenticados |
+| **Circuit Breaker** | 5 fallos consecutivos → circuito abierto por 30s → sonda half-open → cierre o reapertura |
+| **SLA** | El Auth Service debe responder dentro de p99 < 10ms para la validación de tokens |
 
-### 2. Azure Service Bus (Internal — Messaging)
+### 2. Azure Service Bus (Interno — Mensajería)
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| **Direction** | Inbound (subscriber) + Outbound (publisher) |
-| **Protocol** | AMQP 1.0 |
-| **Subscriptions** | `user.login`, `user.logout`, `token.revoked` from the `auth-events` topic |
-| **Publications** | `user.created`, `user.updated`, `user.deleted` to the `users-events` topic |
-| **Session Support** | Enabled — events for the same user are processed in order |
+| **Dirección** | Entrante (suscriptor) + Saliente (publicador) |
+| **Protocolo** | AMQP 1.0 |
+| **Suscripciones** | `user.login`, `user.logout`, `token.revoked` del tópico `auth-events` |
+| **Publicaciones** | `user.created`, `user.updated`, `user.deleted` en el tópico `users-events` |
+| **Soporte de Sesiones** | Habilitado — los eventos del mismo usuario se procesan en orden |
 
-**Event Processing:**
+**Procesamiento de Eventos:**
 
-| Event | Action |
+| Evento | Acción |
 |---|---|
-| `user.login` | Update `last_login_at` timestamp on the user's profile |
-| `user.logout` | Update `last_logout_at` timestamp |
-| `token.revoked` | Record token revocation in user's audit trail |
+| `user.login` | Actualizar la marca de tiempo `last_login_at` en el perfil del usuario |
+| `user.logout` | Actualizar la marca de tiempo `last_logout_at` |
+| `token.revoked` | Registrar la revocación del token en el registro de auditoría del usuario |
 
-### 3. Microsoft Graph API (External — Microsoft)
+### 3. Microsoft Graph API (Externo — Microsoft)
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| **Direction** | Outbound |
-| **Protocol** | REST with OAuth 2.0 (delegated permission) |
-| **Purpose** | Enrich user profiles with Entra ID data: display name, department, job title, manager, profile photo URL |
-| **Sync Frequency** | On profile creation + nightly reconciliation job |
-| **Rate Limit** | Microsoft Graph: 10,000 requests per 10 minutes. Service implements exponential backoff |
+| **Dirección** | Saliente |
+| **Protocolo** | REST con OAuth 2.0 (permiso delegado) |
+| **Propósito** | Enriquecer perfiles de usuario con datos de Entra ID: nombre para mostrar, departamento, puesto de trabajo, gerente, URL de foto de perfil |
+| **Frecuencia de Sincronización** | En la creación del perfil + trabajo de reconciliación nocturno |
+| **Límite de Tasa** | Microsoft Graph: 10,000 solicitudes por cada 10 minutos. El servicio implementa retroceso exponencial |
 
-### 4. PostgreSQL 16 (Internal — Data Store)
+### 4. PostgreSQL 16 (Interno — Almacén de Datos)
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| **Direction** | Outbound |
-| **Protocol** | Npgsql with TLS 1.3 |
-| **Purpose** | Persistent storage for user profiles, role assignments, tenant configurations, and audit logs |
-| **Multi-Tenancy** | `tenant_id` column on every table; Row-Level Security (RLS) policies enforce isolation |
-| **Soft-Delete** | `deleted_at` timestamp column; queries default to `WHERE deleted_at IS NULL` |
-| **Connection Pool** | Min 5, Max 30 connections per instance |
+| **Dirección** | Saliente |
+| **Protocolo** | Npgsql con TLS 1.3 |
+| **Propósito** | Almacenamiento persistente para perfiles de usuario, asignaciones de roles, configuraciones de tenant y registros de auditoría |
+| **Multi-Tenancy** | Columna `tenant_id` en cada tabla; políticas de Seguridad a Nivel de Fila (RLS) aplican aislamiento |
+| **Soft-Delete** | Columna de marca de tiempo `deleted_at`; las consultas por defecto incluyen `WHERE deleted_at IS NULL` |
+| **Pool de Conexiones** | Mín. 5, Máx. 30 conexiones por instancia |
 
-### 5. Notification Service (Internal — Platform)
+### 5. Notification Service (Interno — Plataforma)
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| **Direction** | Outbound |
-| **Protocol** | gRPC with mTLS |
-| **Purpose** | Trigger email notifications for: welcome email (on user creation), profile update confirmation, account suspension notice |
+| **Dirección** | Saliente |
+| **Protocolo** | gRPC con mTLS |
+| **Propósito** | Disparar notificaciones por correo electrónico para: correo de bienvenida (en la creación del usuario), confirmación de actualización de perfil, aviso de suspensión de cuenta |
 
-### 6. Observability Stack
+### 6. Stack de Observabilidad
 
-| System | Protocol | Purpose |
+| Sistema | Protocolo | Propósito |
 |---|---|---|
-| **Prometheus** | HTTP scrape (`/metrics`) | REQ metrics: user CRUD operations, event processing, JWT validation latency |
-| **Elastic Stack** | Filebeat / JSON | Structured logs with correlation ID propagated from API Gateway |
-| **Grafana** | Prometheus source | Dashboards: User Operations Overview, Event Processing Lag, Error Rates |
-| **PagerDuty** | Webhook | Alerts: service down, DB connection failure, event processing backlog > 1000, p99 latency > 500ms |
+| **Prometheus** | HTTP scrape (`/metrics`) | Métricas de solicitudes: operaciones CRUD de usuarios, procesamiento de eventos, latencia de validación JWT |
+| **Elastic Stack** | Filebeat / JSON | Logs estructurados con ID de correlación propagado desde el API Gateway |
+| **Grafana** | Fuente Prometheus | Paneles: Resumen de Operaciones de Usuario, Retraso en Procesamiento de Eventos, Tasas de Error |
+| **PagerDuty** | Webhook | Alertas: servicio caído, fallo de conexión a BD, acumulación de procesamiento de eventos > 1000, latencia p99 > 500ms |
 
-## User Personas
+## Personas de Usuario
 
-| Persona | Description | Typical Actions |
+| Persona | Descripción | Acciones Típicas |
 |---|---|---|
-| **Platform Operator** | IT admin managing the platform | Create/update/delete users, assign roles, view audit logs |
-| **Platform User** | End user of the platform | View own profile, edit contact info, view teams |
-| **Platform SRE** | Site Reliability Engineer | Monitor dashboards, respond to alerts, execute runbooks |
+| **Platform Operator** | Administrador de TI que gestiona la plataforma | Crear/actualizar/eliminar usuarios, asignar roles, ver registros de auditoría |
+| **Platform User** | Usuario final de la plataforma | Ver perfil propio, editar información de contacto, ver equipos |
+| **Platform SRE** | Ingeniero de Confiabilidad del Sitio | Monitorear paneles, responder a alertas, ejecutar runbooks |
 
-## Data Flow — User Creation (with JWT Validation)
+## Flujo de Datos — Creación de Usuario (con Validación JWT)
 
 ```
 Operator ──POST /api/users──▶ API Gateway ──Validate JWT──▶ Auth Service
                                    │                          │
-                                   │ Valid                    │ OK
+                                   │ Válido                    │ OK
                                    ▼                          │
                               Users Service ◄─────────────────┘
                                    │
                     ┌──────────────┼──────────────┐
                     ▼              ▼              ▼
               PostgreSQL    Service Bus     Notification
-              (INSERT)      (user.created)  (welcome email)
+              (INSERT)      (user.created)  (correo de bienvenida)
 ```
 
-## Related Documents
+## Documentos Relacionados
 
-- [Container View](containers.md) — runtime decomposition
-- [Security Architecture](security.md) — JWT validation flow and authorization model
-- [Dependencies](../decisions/dependencies.md) — full dependency inventory
+- [Vista de Contenedores](containers.md) — descomposición en tiempo de ejecución
+- [Arquitectura de Seguridad](security.md) — flujo de validación JWT y modelo de autorización
+- [Dependencias](../decisions/dependencies.md) — inventario completo de dependencias

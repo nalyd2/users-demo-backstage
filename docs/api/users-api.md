@@ -1,54 +1,54 @@
-# Users API Reference
+# Referencia de la API de Usuarios
 
-## Overview
+## Descripción General
 
-The Users API provides CRUD operations for user profile management. All endpoints (except health checks) require a valid JWT access token issued by the Authentication Service.
+La API de Usuarios proporciona operaciones CRUD para la gestión de perfiles de usuario. Todos los endpoints (excepto las comprobaciones de salud) requieren un token de acceso JWT válido emitido por el Servicio de Autenticación.
 
-**Base URL (Production):** `https://users.internal.platform`
+**URL Base (Producción):** `https://users.internal.platform`
 
-## Authentication
+## Autenticación
 
-Include the JWT in the `Authorization` header:
+Incluye el JWT en el encabezado `Authorization`:
 
 ```
 Authorization: Bearer <access-token>
 ```
 
-The JWT must include:
-- `sub` — the requesting user's UUID
-- `roles` — array of role strings (e.g., `["admin"]`)
-- `tid` — tenant UUID (enforced on all queries)
+El JWT debe incluir:
+- `sub` — el UUID del usuario solicitante
+- `roles` — arreglo de cadenas de roles (ej., `["admin"]`)
+- `tid` — UUID del inquilino (aplicado en todas las consultas)
 
-## Role-Based Access Control
+## Control de Acceso Basado en Roles
 
-| Action | `admin` | `operator` | `user` |
+| Acción | `admin` | `operator` | `user` |
 |---|---|---|---|
 | `GET /api/users` | ✅ | ✅ | ❌ |
-| `GET /api/users/{id}` | ✅ Any | ✅ Any | ✅ Self only |
+| `GET /api/users/{id}` | ✅ Cualquiera | ✅ Cualquiera | ✅ Solo propio |
 | `POST /api/users` | ✅ | ❌ | ❌ |
-| `PUT /api/users/{id}` | ✅ Any | ✅ Limited | ✅ Self (limited fields) |
+| `PUT /api/users/{id}` | ✅ Cualquiera | ✅ Limitado | ✅ Propio (campos limitados) |
 | `DELETE /api/users/{id}` | ✅ | ❌ | ❌ |
 
 ## Endpoints
 
 ### `GET /api/users`
 
-List users with pagination and filtering.
+Lista usuarios con paginación y filtrado.
 
-**Required role:** `admin` or `operator`
+**Rol requerido:** `admin` o `operator`
 
-**Query Parameters:**
+**Parámetros de Consulta:**
 
-| Parameter | Type | Default | Description |
+| Parámetro | Tipo | Valor por defecto | Descripción |
 |---|---|---|---|
-| `pageSize` | integer | 20 | Users per page (1-100) |
-| `continuationToken` | string | — | Opaque cursor from previous response |
-| `search` | string | — | Full-text search on username, email, display name |
-| `department` | string | — | Filter by department (exact match) |
-| `role` | string | — | Filter by assigned role |
-| `includeDeleted` | boolean | false | Include soft-deleted users |
+| `pageSize` | integer | 20 | Usuarios por página (1-100) |
+| `continuationToken` | string | — | Cursor opaco de la respuesta anterior |
+| `search` | string | — | Búsqueda de texto completo en nombre de usuario, correo electrónico, nombre mostrado |
+| `department` | string | — | Filtrar por departamento (coincidencia exacta) |
+| `role` | string | — | Filtrar por rol asignado |
+| `includeDeleted` | boolean | false | Incluir usuarios eliminados de forma lógica (soft-delete) |
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 
 ```json
 {
@@ -79,27 +79,27 @@ List users with pagination and filtering.
 
 ### `GET /api/users/{userId}`
 
-Get a single user by ID. Self-access allowed for `user` role.
+Obtiene un usuario por su ID. Acceso propio permitido para el rol `user`.
 
-**Response `200 OK`:** Same shape as items in the list response.
+**Respuesta `200 OK`:** Misma estructura que los elementos en la respuesta de lista.
 
-**Error Responses:**
+**Respuestas de Error:**
 
-| Status | Condition |
+| Estado | Condición |
 |---|---|
-| `401` | Missing or invalid JWT |
-| `403` | Role not authorized, or requesting another user with `user` role |
-| `404` | User not found in tenant (or soft-deleted, unless actor is admin) |
+| `401` | JWT faltante o inválido |
+| `403` | Rol no autorizado, o solicitando otro usuario con rol `user` |
+| `404` | Usuario no encontrado en el inquilino (o eliminado lógicamente, a menos que el actor sea admin) |
 
 ---
 
 ### `POST /api/users`
 
-Create a new user profile.
+Crea un nuevo perfil de usuario.
 
-**Required role:** `admin`
+**Rol requerido:** `admin`
 
-**Request:**
+**Solicitud:**
 
 ```json
 {
@@ -112,18 +112,18 @@ Create a new user profile.
 }
 ```
 
-**Validation Rules:**
+**Reglas de Validación:**
 
-| Field | Rule |
+| Campo | Regla |
 |---|---|
-| `username` | 3-100 chars, lowercase alphanumeric + `.`, `-`, `_` |
-| `email` | Valid email, max 255 chars, unique within tenant |
-| `displayName` | Max 200 chars |
-| `department` | Max 100 chars |
-| `jobTitle` | Max 150 chars |
-| `roles` | Max 20 entries, each must be a known role |
+| `username` | 3-100 caracteres, alfanumérico en minúsculas + `.`, `-`, `_` |
+| `email` | Correo electrónico válido, máximo 255 caracteres, único dentro del inquilino |
+| `displayName` | Máximo 200 caracteres |
+| `department` | Máximo 100 caracteres |
+| `jobTitle` | Máximo 150 caracteres |
+| `roles` | Máximo 20 entradas, cada una debe ser un rol conocido |
 
-**Response `201 Created`:**
+**Respuesta `201 Creado`:**
 
 ```json
 {
@@ -140,24 +140,24 @@ Create a new user profile.
 }
 ```
 
-Includes `Location` header with the URL of the created user.
+Incluye el encabezado `Location` con la URL del usuario creado.
 
-**Error Responses:**
+**Respuestas de Error:**
 
-| Status | Condition |
+| Estado | Condición |
 |---|---|
-| `400` | Validation error |
-| `409` | Username or email already taken in tenant |
+| `400` | Error de validación |
+| `409` | Nombre de usuario o correo electrónico ya existente en el inquilino |
 
 ---
 
 ### `PUT /api/users/{userId}`
 
-Update a user profile. Field-level permissions apply.
+Actualiza un perfil de usuario. Se aplican permisos a nivel de campo.
 
-**Permissions:**
+**Permisos:**
 
-| Field | `admin` | `operator` | `user` (self) |
+| Campo | `admin` | `operator` | `user` (propio) |
 |---|---|---|---|
 | `email` | ✅ | ✅ | ✅ |
 | `displayName` | ✅ | ✅ | ✅ |
@@ -165,19 +165,19 @@ Update a user profile. Field-level permissions apply.
 | `jobTitle` | ✅ | ✅ | ❌ |
 | `roles` | ✅ | ❌ | ❌ |
 
-**Request:** All fields are optional — only provided fields are updated (partial update).
+**Solicitud:** Todos los campos son opcionales — solo se actualizan los campos proporcionados (actualización parcial).
 
-**Response `200 OK`:** Full user object with updated fields.
+**Respuesta `200 OK`:** Objeto de usuario completo con los campos actualizados.
 
 ---
 
 ### `DELETE /api/users/{userId}`
 
-Soft-delete a user. Sets `deleted_at` timestamp without removing the database row.
+Elimina lógicamente un usuario. Establece la marca de tiempo `deleted_at` sin eliminar la fila de la base de datos.
 
-**Required role:** `admin`
+**Rol requerido:** `admin`
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 
 ```json
 {
@@ -190,13 +190,13 @@ Soft-delete a user. Sets `deleted_at` timestamp without removing the database ro
 
 ### `GET /api/health/live`
 
-Kubernetes liveness probe. Returns 200 while process is alive.
+Sonda de vitalidad de Kubernetes. Retorna 200 mientras el proceso está activo.
 
 ### `GET /api/health/ready`
 
-Kubernetes readiness probe. Returns 200 when PostgreSQL, Auth Service, and Service Bus are healthy.
+Sonda de preparación de Kubernetes. Retorna 200 cuando PostgreSQL, el Servicio de Autenticación y Service Bus están saludables.
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 
 ```json
 {
@@ -209,20 +209,20 @@ Kubernetes readiness probe. Returns 200 when PostgreSQL, Auth Service, and Servi
 }
 ```
 
-## Pagination
+## Paginación
 
-The API uses **cursor-based pagination** for efficient, stable pagination over large datasets:
+La API utiliza **paginación basada en cursor** para una paginación eficiente y estable sobre grandes conjuntos de datos:
 
-1. First request: `GET /api/users?pageSize=50`
-2. Response includes `pagination.continuationToken`
-3. Next page: `GET /api/users?pageSize=50&continuationToken=eyJwYWdlIjoy...`
-4. When `pagination.hasMore` is `false`, there are no more pages
+1. Primera solicitud: `GET /api/users?pageSize=50`
+2. La respuesta incluye `pagination.continuationToken`
+3. Siguiente página: `GET /api/users?pageSize=50&continuationToken=eyJwYWdlIjoy...`
+4. Cuando `pagination.hasMore` es `false`, no hay más páginas
 
-**Important:** Do not construct or decode continuation tokens — they are opaque.
+**Importante:** No construyas ni decodifiques los tokens de continuación — son opacos.
 
-## Error Responses
+## Respuestas de Error
 
-All errors use the `ProblemDetails` format (RFC 9457):
+Todos los errores utilizan el formato `ProblemDetails` (RFC 9457):
 
 ```json
 {
@@ -234,9 +234,9 @@ All errors use the `ProblemDetails` format (RFC 9457):
 }
 ```
 
-## Related Documents
+## Documentos Relacionados
 
-- [OpenAPI Specification](../../openapi.yaml)
-- [Security Architecture](../architecture/security.md)
-- [Events](events.md)
-- [Variables & Configuration](variables.md)
+- [Especificación OpenAPI](../../openapi.yaml)
+- [Arquitectura de Seguridad](../architecture/security.md)
+- [Eventos](events.md)
+- [Variables y Configuración](variables.md)

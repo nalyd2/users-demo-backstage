@@ -1,42 +1,42 @@
-# Observability — Users Service
+# Observabilidad — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Overview
+## Visión General
 
-The Users Service implements structured logging, metrics, and distributed tracing to provide visibility into user management operations, tenant isolation, event processing, and Graph API integration. All telemetry uses OpenTelemetry and aligns with the platform observability standards.
+El Users Service implementa logs estructurados, métricas y trazabilidad distribuida para proporcionar visibilidad sobre las operaciones de gestión de usuarios, aislamiento de inquilinos, procesamiento de eventos e integración con Graph API. Toda la telemetría utiliza OpenTelemetry y se alinea con los estándares de observabilidad de la plataforma.
 
-## Pillar 1: Structured Logging (Serilog)
+## Pilar 1: Logs Estructurados (Serilog)
 
-### Configuration
+### Configuración
 
-All log output is JSON format via Serilog. Minimum levels: Default Information, `Microsoft.EntityFrameworkCore` Warning, `System.Net.Http.HttpClient` Warning.
+Toda la salida de logs está en formato JSON mediante Serilog. Niveles mínimos: Information por defecto, `Microsoft.EntityFrameworkCore` Warning, `System.Net.Http.HttpClient` Warning.
 
-### Log Levels
+### Niveles de Log
 
-| Level | Usage |
+| Nivel | Uso |
 |---|---|
-| **Verbose** | Development-only diagnostics |
-| **Debug** | Detailed troubleshooting; disabled by default in production |
-| **Information** | User CRUD operations, tenant changes, event processing |
-| **Warning** | Degraded path usage, rate limit approaching, deprecated endpoint usage |
-| **Error** | Failed operation, Graph API failure, event processing failure |
-| **Fatal** | Service fails to start, database unreachable, unrecoverable state |
+| **Verbose** | Diagnósticos solo para desarrollo |
+| **Debug** | Solución de problemas detallada; deshabilitado por defecto en producción |
+| **Information** | Operaciones CRUD de usuario, cambios de inquilino, procesamiento de eventos |
+| **Warning** | Uso de ruta degradada, límite de tasa próximo, uso de endpoint obsoleto |
+| **Error** | Operación fallida, fallo de Graph API, fallo de procesamiento de eventos |
+| **Fatal** | El servicio no puede iniciar, base de datos no accesible, estado irrecuperable |
 
-### Event Categories
+### Categorías de Eventos
 
-| Category | Event ID Range | Description |
+| Categoría | Rango de ID de Evento | Descripción |
 |---|---|---|
-| User Operations | 1000-1999 | Create, read, update, delete, soft-delete, restore |
-| Tenant Operations | 2000-2999 | Tenant creation, configuration, status changes |
-| Auth Events | 3000-3999 | Consumed auth events (login, logout, token revoked) |
-| User Events | 4000-4999 | Published user events (created, updated, deleted) |
-| Graph API | 5000-5999 | Microsoft Graph API calls, profile enrichment |
-| System Health | 6000-6999 | Startup, shutdown, health checks |
+| Operaciones de Usuario | 1000-1999 | Crear, leer, actualizar, eliminar, soft-delete, restaurar |
+| Operaciones de Inquilino | 2000-2999 | Creación de inquilino, configuración, cambios de estado |
+| Eventos de Auth | 3000-3999 | Eventos de auth consumidos (login, logout, token revocado) |
+| Eventos de Usuario | 4000-4999 | Eventos de usuario publicados (creado, actualizado, eliminado) |
+| Graph API | 5000-5999 | Llamadas a Microsoft Graph API, enriquecimiento de perfil |
+| Salud del Sistema | 6000-6999 | Inicio, apagado, verificaciones de salud |
 
-### Mandatory Events
+### Eventos Obligatorios
 
 ```csharp
 public static partial class LogMessages
@@ -63,75 +63,75 @@ public static partial class LogMessages
 }
 ```
 
-## Pillar 2: Metrics (Prometheus / OpenTelemetry)
+## Pilar 2: Métricas (Prometheus / OpenTelemetry)
 
-### Metric Naming
+### Nomenclatura de Métricas
 
 ```
-users_<component>_<metric_name>_<unit>
+users_<componente>_<nombre_metrica>_<unidad>
 ```
 
-### Required Metrics
+### Métricas Requeridas
 
-#### User Operations
+#### Operaciones de Usuario
 
-| Metric Name | Type | Labels | Description |
+| Nombre de Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_crud_operations_total` | Counter | operation (create/read/update/delete/restore), result | User CRUD operation count |
-| `users_crud_duration_seconds` | Histogram | operation, result | CRUD operation latency |
-| `users_active_total` | Gauge | tenant_id | Current active (non-deleted) user count |
-| `users_soft_deleted_total` | Gauge | tenant_id | Currently soft-deleted user count |
+| `users_crud_operations_total` | Contador | operation (create/read/update/delete/restore), result | Conteo de operaciones CRUD de usuario |
+| `users_crud_duration_seconds` | Histograma | operation, result | Latencia de operación CRUD |
+| `users_active_total` | Indicador | tenant_id | Conteo actual de usuarios activos (no eliminados) |
+| `users_soft_deleted_total` | Indicador | tenant_id | Conteo actual de usuarios en soft-delete |
 
-#### Auth Events
+#### Eventos de Auth
 
-| Metric Name | Type | Labels | Description |
+| Nombre de Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_auth_events_consumed_total` | Counter | event_type (login/logout/token_revoked), result | Auth events consumed |
-| `users_auth_events_processing_duration_seconds` | Histogram | event_type | Auth event processing latency |
-| `users_auth_events_lag_seconds` | Gauge | event_type | Current lag between event publish and consumption |
+| `users_auth_events_consumed_total` | Contador | event_type (login/logout/token_revoked), result | Eventos de auth consumidos |
+| `users_auth_events_processing_duration_seconds` | Histograma | event_type | Latencia de procesamiento de eventos de auth |
+| `users_auth_events_lag_seconds` | Indicador | event_type | Retraso actual entre publicación y consumo del evento |
 
-#### User Events Published
+#### Eventos de Usuario Publicados
 
-| Metric Name | Type | Labels | Description |
+| Nombre de Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_events_published_total` | Counter | event_type (created/updated/deleted) | User events published to Service Bus |
-| `users_events_publish_duration_seconds` | Histogram | event_type | Event publishing latency |
+| `users_events_published_total` | Contador | event_type (created/updated/deleted) | Eventos de usuario publicados en Service Bus |
+| `users_events_publish_duration_seconds` | Histograma | event_type | Latencia de publicación de eventos |
 
 #### Graph API
 
-| Metric Name | Type | Labels | Description |
+| Nombre de Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_graph_api_calls_total` | Counter | operation, result | Graph API call count |
-| `users_graph_api_duration_seconds` | Histogram | operation | Graph API call latency |
-| `users_graph_api_enrichment_total` | Counter | result | Profile enrichment attempt count |
+| `users_graph_api_calls_total` | Contador | operation, result | Conteo de llamadas a Graph API |
+| `users_graph_api_duration_seconds` | Histograma | operation | Latencia de llamada a Graph API |
+| `users_graph_api_enrichment_total` | Contador | result | Conteo de intentos de enriquecimiento de perfil |
 
-#### Tenant Operations
+#### Operaciones de Inquilino
 
-| Metric Name | Type | Labels | Description |
+| Nombre de Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_tenants_total` | Gauge | status | Total tenant count by status |
-| `users_tenants_operations_total` | Counter | operation, result | Tenant management operations |
+| `users_tenants_total` | Indicador | status | Conteo total de inquilinos por estado |
+| `users_tenants_operations_total` | Contador | operation, result | Operaciones de gestión de inquilinos |
 
-#### System
+#### Sistema
 
-| Metric Name | Type | Labels | Description |
+| Nombre de Métrica | Tipo | Etiquetas | Descripción |
 |---|---|---|---|
-| `users_requests_total` | Counter | endpoint, method, status_code | Total HTTP requests |
-| `users_request_duration_seconds` | Histogram | endpoint, method, status_code | Request latency |
-| `users_db_connection_pool_size` | Gauge | host | Database connection pool size |
+| `users_requests_total` | Contador | endpoint, method, status_code | Total de solicitudes HTTP |
+| `users_request_duration_seconds` | Histograma | endpoint, method, status_code | Latencia de solicitud |
+| `users_db_connection_pool_size` | Indicador | host | Tamaño del pool de conexiones de base de datos |
 
-## Pillar 3: Distributed Tracing (OpenTelemetry)
+## Pilar 3: Trazabilidad Distribuida (OpenTelemetry)
 
-### Trace Context Propagation
+### Propagación de Contexto de Traza
 
-- W3C Trace Context standard (`traceparent` / `tracestate` headers).
-- Incoming auth events carry trace context from Auth Service (via Service Bus application properties).
-- Outgoing user events propagate trace context to downstream consumers.
-- All outbound HTTP (Graph API) propagates trace context.
+- Estándar W3C Trace Context (encabezados `traceparent` / `tracestate`).
+- Los eventos de auth entrantes traen contexto de traza desde Auth Service (mediante propiedades de aplicación de Service Bus).
+- Los eventos de usuario salientes propagan contexto de traza a consumidores posteriores.
+- Todo HTTP saliente (Graph API) propaga contexto de traza.
 
-### Required Spans
+### Spans Requeridos
 
-| Span Name | Attributes |
+| Nombre del Span | Atributos |
 |---|---|
 | `GET /api/v{version}/users/{id}` | user_id, tenant_id |
 | `POST /api/v{version}/users` | tenant_id, role |
@@ -143,24 +143,24 @@ users_<component>_<metric_name>_<unit>
 | `GraphApiClient.EnrichProfile` | user_id, graph_user_id |
 | `UserEventPublisher.Publish` | event_type, user_id |
 
-### Sampling Strategy
+### Estrategia de Muestreo
 
-| Traffic | Rate |
+| Tráfico | Tasa |
 |---|---|
-| Healthy requests (2xx) | 10% |
-| Client errors (4xx) | 50% |
-| Server errors (5xx) | 100% |
-| Auth event processing | 100% (all events important for tracing) |
-| Graph API calls | 25% |
-| Health check endpoints | 0% |
+| Solicitudes saludables (2xx) | 10% |
+| Errores de cliente (4xx) | 50% |
+| Errores de servidor (5xx) | 100% |
+| Procesamiento de eventos de auth | 100% (todos los eventos importantes para trazabilidad) |
+| Llamadas a Graph API | 25% |
+| Endpoints de verificación de salud | 0% |
 
-## Alert Thresholds
+## Umbrales de Alerta
 
-| Alert | Condition | Severity |
+| Alerta | Condición | Severidad |
 |---|---|---|
-| High error rate | Error rate > 5% over 5 minutes | Critical |
-| Event processing lag > 5 minutes | Event lag > 300 seconds | Warning |
-| Graph API failure rate | Error rate > 10% over 5 minutes | Warning |
-| High user mutation rate | Create/update/delete rate > 100/s | Warning |
-| P99 latency > 1000ms | Latency > 1s for 5 minutes | Critical |
-| Soft-delete queue depth | Pending purge > 10000 | Warning |
+| Tasa de error alta | Tasa de error > 5% durante 5 minutos | Crítica |
+| Retraso de procesamiento de eventos > 5 minutos | Retraso de evento > 300 segundos | Advertencia |
+| Tasa de fallo de Graph API | Tasa de error > 10% durante 5 minutos | Advertencia |
+| Tasa alta de mutación de usuario | Tasa de creación/actualización/eliminación > 100/s | Advertencia |
+| Latencia P99 > 1000ms | Latencia > 1s durante 5 minutos | Crítica |
+| Profundidad de cola de soft-delete | Purga pendiente > 10000 | Advertencia |

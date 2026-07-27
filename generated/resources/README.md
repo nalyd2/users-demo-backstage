@@ -1,11 +1,11 @@
-# Generated Resource Inventories
+# Inventarios de Recursos Generados
 
-Cloud resource metadata produced by CI/CD for the Users Service.
+Metadatos de recursos en la nube producidos por CI/CD para el Servicio de Usuarios.
 
-| Artifact | Description |
+| Artefacto | Descripción |
 |---|---|
-| `azure-resources.json` | Full Azure resource inventory via Resource Graph — Azure Database for PostgreSQL (Flexible Server), Azure Service Bus (Premium), Azure Key Vault (Standard), AKS (Standard_D4s_v5), Azure Container Registry, Azure Traffic Manager |
-| `cost-estimate.json` | Monthly cost estimate based on SKU configuration — PostgreSQL General Purpose (4 vCores, 16 GB RAM), Service Bus Premium, Key Vault Standard, AKS node pool |
-| `resource-tags.csv` | Tag compliance report — validates that all Users Service resources carry mandatory tags: `service: users-service`, `system: user-management-system`, `domain: identity`, `owner: platform-engineering`, `environment`, `cost-center` |
+| `azure-resources.json` | Inventario completo de recursos de Azure vía Resource Graph — Azure Database for PostgreSQL (Servidor Flexible), Azure Service Bus (Premium), Azure Key Vault (Estándar), AKS (Standard_D4s_v5), Azure Container Registry, Azure Traffic Manager |
+| `cost-estimate.json` | Estimación de costo mensual basada en la configuración de SKU — PostgreSQL Propósito General (4 vCores, 16 GB RAM), Service Bus Premium, Key Vault Estándar, grupo de nodos AKS |
+| `resource-tags.csv` | Informe de cumplimiento de etiquetas — valida que todos los recursos del Servicio de Usuarios tengan las etiquetas obligatorias: `service: users-service`, `system: user-management-system`, `domain: identity`, `owner: platform-engineering`, `environment`, `cost-center` |
 
-**Not committed.**
+**No confirmado en el repositorio.**

@@ -1,33 +1,33 @@
-# Chunking Strategy
+# Estrategia de Fragmentacion
 
-## Overview
+## Descripcion General
 
-Documents are split into semantically meaningful chunks for embedding and retrieval. The chunking strategy balances **context completeness** with **retrieval precision**.
+Los documentos se dividen en fragmentos语义amente significativos para su incrustacion y recuperacion. La estrategia de fragmentacion equilibra la **integralidad del contexto** con la **precision de recuperacion**.
 
-## Chunk Parameters
+## Parametros de Fragmentacion
 
-| Parameter | Value | Rationale |
+| Parametro | Valor | Justificacion |
 |---|---|---|
-| **Max chunk size** | 1,024 tokens | Fits within embedding model context window with margin for query |
-| **Overlap** | 128 tokens | Ensures context continuity across chunk boundaries |
-| **Min chunk size** | 64 tokens | Prevents tiny fragments (e.g., single-sentence chunks) |
+| **Tamano maximo de fragmento** | 1,024 tokens | Cabe dentro de la ventana de contexto del modelo de incrustacion con margen para la consulta |
+| **Superposicion** | 128 tokens | Garantiza continuidad de contexto entre limites de fragmentos |
+| **Tamano minimo de fragmento** | 64 tokens | Evita fragmentos muy pequenos (ej., fragmentos de una sola oracion) |
 
-## Chunking by Document Type
+## Fragmentacion por Tipo de Documento
 
-| Document Type | Strategy | Chunk Boundary |
+| Tipo de Documento | Estrategia | Limite de Fragmento |
 |---|---|---|
-| Architecture docs | Section-based (`##` headers) | Each `##` section is a chunk |
-| API Reference | Endpoint-based (`###` headers) | Each endpoint definition is a chunk |
-| Runbooks | Procedure-based (`##` headers) | Each procedure step group is a chunk |
-| ADRs | Document-level | Each ADR is one chunk (they are already concise) |
-| Onboarding | Section-based (`##` headers) | Each section is a chunk |
-| Decisions | Section-based (`##` headers) | Each section is a chunk |
-| `openapi.yaml` | Path-based | Each path (endpoint) + its schema references is a chunk |
-| `README.md` | Section-based | Each `##` section is a chunk |
+| Documentos de arquitectura | Basado en secciones (encabezados `##`) | Cada seccion `##` es un fragmento |
+| Referencia de API | Basado en endpoints (encabezados `###`) | Cada definicion de endpoint es un fragmento |
+| Runbooks | Basado en procedimientos (encabezados `##`) | Cada grupo de pasos de procedimiento es un fragmento |
+| ADRs | A nivel de documento | Cada ADR es un fragmento (ya son concisos) |
+| Incorporacion | Basado en secciones (encabezados `##`) | Cada seccion es un fragmento |
+| Decisiones | Basado en secciones (encabezados `##`) | Cada seccion es un fragmento |
+| `openapi.yaml` | Basado en rutas | Cada ruta (endpoint) + sus referencias de esquema es un fragmento |
+| `README.md` | Basado en secciones | Cada seccion `##` es un fragmento |
 
-## Chunk Metadata
+## Metadatos del Fragmento
 
-Every chunk is tagged with metadata extracted from the document:
+Cada fragmento se etiqueta con metadatos extraidos del documento:
 
 ```json
 {
@@ -48,26 +48,26 @@ Every chunk is tagged with metadata extracted from the document:
 }
 ```
 
-## Code Block Handling
+## Manejo de Bloques de Codigo
 
-Code blocks within markdown are embedded as-is in the chunk. Code-heavy sections (>50% code) may be split differently — the code is extracted and referenced by surrounding explanatory text.
+Los bloques de codigo dentro del markdown se incrustan tal cual en el fragmento. Las secciones con mucho codigo (>50% codigo) pueden dividirse de manera diferente -- el codigo se extrae y se referencia mediante el texto explicativo circundante.
 
-## Mermaid Diagram Handling
+## Manejo de Diagramas Mermaid
 
-Mermaid diagrams are converted to accessible text descriptions during chunking:
+Los diagramas Mermaid se convierten a descripciones de texto accesibles durante la fragmentacion:
 
 ```markdown
-<!-- Source -->
+<!-- Fuente -->
 ```mermaid
 graph TD
     A[Client] --> B[Users Service]
     B --> C[Auth Service]
 ```
 
-<!-- Indexed text: "Diagram: Client sends request to Users Service which validates JWT with Auth Service" -->
+<!-- Texto indexado: "Diagram: Client sends request to Users Service which validates JWT with Auth Service" -->
 ```
 
-## Related Documents
+## Documentos Relacionados
 
 - [Metadata](metadata.md)
 - [Embeddings](embeddings.md)

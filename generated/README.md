@@ -1,24 +1,24 @@
-# Generated Artifacts
+# Artefactos Generados
 
-## Overview
+## Visión General
 
-This directory contains artifacts **automatically generated** by the CI/CD pipeline. These files are never committed to the repository — they are produced during the build and published as pipeline artifacts or deployed to Backstage.
+Este directorio contiene artefactos **generados automáticamente** por el pipeline CI/CD. Estos archivos nunca se confirman en el repositorio — se producen durante la compilación y se publican como artefactos del pipeline o se despliegan en Backstage.
 
-## Directory Structure
+## Estructura del Directorio
 
 ```
 generated/
-├── README.md           # This file
-├── openapi/            # Generated OpenAPI bundles and client SDKs
-├── quality/            # Code quality reports and test results
-├── metadata/           # Catalog metadata enrichment
-├── topology/           # Infrastructure and dependency topology
-└── resources/          # Cloud resource inventories
+├── README.md           # Este archivo
+├── openapi/            # Paquetes OpenAPI generados y SDKs de cliente
+├── quality/            # Informes de calidad de código y resultados de pruebas
+├── metadata/           # Enriquecimiento de metadatos del catálogo
+├── topology/           # Topología de infraestructura y dependencias
+└── resources/          # Inventarios de recursos en la nube
 ```
 
-## Generation Pipeline
+## Pipeline de Generación
 
-The following Azure DevOps pipeline stages generate these artifacts:
+Las siguientes etapas del pipeline de Azure DevOps generan estos artefactos:
 
 ```yaml
 # Excerpt from azure-pipelines.yml
@@ -54,55 +54,55 @@ stages:
         # Publishes to Azure Artifacts and Backstage
 ```
 
-## Artifact Catalog
+## Catálogo de Artefactos
 
 ### `generated/openapi/`
 
-| Artifact | Format | Consumer | Description |
+| Artefacto | Formato | Consumidor | Descripción |
 |---|---|---|---|
-| `users-service-openapi.yaml` | OpenAPI 3.1 | Backstage, API Gateway | Bundled OpenAPI spec with all `$ref` resolved |
-| `users-service-openapi.json` | OpenAPI 3.1 (JSON) | Swagger UI, Power Platform | JSON version for tools that don't support YAML |
-| `users-service-client-csharp/` | C# SDK | Internal .NET consumers | Auto-generated C# HTTP client (Kiota/NSwag) |
-| `users-service-client-typescript/` | TypeScript SDK | Frontend apps | Auto-generated TypeScript client |
+| `users-service-openapi.yaml` | OpenAPI 3.1 | Backstage, API Gateway | Especificación OpenAPI empaquetada con todas las `$ref` resueltas |
+| `users-service-openapi.json` | OpenAPI 3.1 (JSON) | Swagger UI, Power Platform | Versión JSON para herramientas que no soportan YAML |
+| `users-service-client-csharp/` | SDK C# | Consumidores .NET internos | Cliente HTTP C# generado automáticamente (Kiota/NSwag) |
+| `users-service-client-typescript/` | SDK TypeScript | Aplicaciones frontend | Cliente TypeScript generado automáticamente |
 
 ### `generated/quality/`
 
-| Artifact | Format | Consumer | Description |
+| Artefacto | Formato | Consumidor | Descripción |
 |---|---|---|---|
-| `test-results.xml` | NUnit XML | Azure DevOps Test Reports | Unit + integration test results |
-| `code-coverage.xml` | Cobertura XML | SonarQube | Line and branch coverage report |
-| `sonarqube-report.json` | JSON | SonarQube Cloud | Full static analysis results |
-| `dependency-scan-results.json` | JSON | Mend Dashboard | Known vulnerability scan results |
-| `benchmark-results.md` | Markdown | TechDocs | Performance benchmark comparison (profile CRUD, pagination, JWT validation fallback) |
-| `lint-results.json` | JSON | PR gate | EditorConfig and Roslyn analyzer results |
+| `test-results.xml` | XML NUnit | Informes de Pruebas Azure DevOps | Resultados de pruebas unitarias y de integración |
+| `code-coverage.xml` | XML Cobertura | SonarQube | Informe de cobertura de líneas y ramas |
+| `sonarqube-report.json` | JSON | SonarQube Cloud | Resultados completos de análisis estático |
+| `dependency-scan-results.json` | JSON | Panel Mend | Resultados de escaneo de vulnerabilidades conocidas |
+| `benchmark-results.md` | Markdown | TechDocs | Comparativa de rendimiento de benchmarks (CRUD de perfiles, paginación, respaldo de validación JWT) |
+| `lint-results.json` | JSON | Puerta PR | Resultados del analizador EditorConfig y Roslyn |
 
 ### `generated/metadata/`
 
-| Artifact | Format | Consumer | Description |
+| Artefacto | Formato | Consumidor | Descripción |
 |---|---|---|---|
-| `catalog-enriched.yaml` | Backstage Catalog | Backstage | `catalog-info.yaml` enriched with dynamic data (build numbers, deployment timestamps) |
-| `api-versions.json` | JSON | Backstage API plugin | Active API version metadata |
-| `component-owners.json` | JSON | Backstage Org plugin | Validated ownership data |
+| `catalog-enriched.yaml` | Catálogo Backstage | Backstage | `catalog-info.yaml` enriquecido con datos dinámicos (números de compilación, marcas de tiempo de despliegue) |
+| `api-versions.json` | JSON | Plugin API de Backstage | Metadatos de versiones activas de la API |
+| `component-owners.json` | JSON | Plugin de Organización de Backstage | Datos de propiedad validados |
 
 ### `generated/topology/`
 
-| Artifact | Format | Consumer | Description |
+| Artefacto | Formato | Consumidor | Descripción |
 |---|---|---|---|
-| `dependency-graph.json` | JSON | Backstage TechDocs | Service dependency graph for visualization (dependsOn auth-service, PostgreSQL, Service Bus) |
-| `network-policy-report.json` | JSON | InfoSec | Kubernetes network policy audit |
-| `component-map.svg` | SVG | TechDocs | Auto-generated C4 component diagram |
+| `dependency-graph.json` | JSON | TechDocs de Backstage | Grafo de dependencias del servicio para visualización (depende de auth-service, PostgreSQL, Service Bus) |
+| `network-policy-report.json` | JSON | InfoSec | Auditoría de políticas de red de Kubernetes |
+| `component-map.svg` | SVG | TechDocs | Diagrama de componentes C4 generado automáticamente |
 
 ### `generated/resources/`
 
-| Artifact | Format | Consumer | Description |
+| Artefacto | Formato | Consumidor | Descripción |
 |---|---|---|---|
-| `azure-resources.json` | JSON | Azure Resource Graph | Inventory of all Azure resources for this service (PostgreSQL, Service Bus, Key Vault, AKS, ACR) |
-| `cost-estimate.json` | JSON | FinOps Dashboard | Monthly cost estimate based on current SKUs |
-| `resource-tags.csv` | CSV | Azure Policy | Resource tag compliance report |
+| `azure-resources.json` | JSON | Azure Resource Graph | Inventario de todos los recursos de Azure para este servicio (PostgreSQL, Service Bus, Key Vault, AKS, ACR) |
+| `cost-estimate.json` | JSON | Panel FinOps | Estimación de costo mensual basada en las SKUs actuales |
+| `resource-tags.csv` | CSV | Azure Policy | Informe de cumplimiento de etiquetas de recursos |
 
-## Pipeline Examples (Azure DevOps)
+## Ejemplos de Pipeline (Azure DevOps)
 
-### Generating OpenAPI Bundle
+### Generando Paquete OpenAPI
 
 ```yaml
 - job: GenerateOpenAPI
@@ -135,7 +135,7 @@ stages:
         artifactName: openapi-specs
 ```
 
-### Generating C# Client SDK
+### Generando SDK de Cliente C#
 
 ```yaml
 - job: GenerateClientSDK
@@ -159,7 +159,7 @@ stages:
         artifactName: client-sdk-csharp
 ```
 
-### Generating Quality Reports
+### Generando Informes de Calidad
 
 ```yaml
 - job: GenerateQualityReports
@@ -186,11 +186,11 @@ stages:
         artifactName: quality-reports
 ```
 
-## Integration with Backstage
+## Integración con Backstage
 
 ### TechDocs
 
-The generated OpenAPI bundles are rendered in Backstage via the API plugin:
+Los paquetes OpenAPI generados se renderizan en Backstage a través del plugin de API:
 
 ```yaml
 # catalog-info.yaml — API entity
@@ -200,9 +200,9 @@ spec:
     $text: ./generated/openapi/users-service-openapi.yaml
 ```
 
-### Catalog Enrichment
+### Enriquecimiento del Catálogo
 
-The pipeline enriches `catalog-info.yaml` with dynamic metadata before registration:
+El pipeline enriquece `catalog-info.yaml` con metadatos dinámicos antes del registro:
 
 ```yaml
 - job: EnrichCatalog
@@ -222,8 +222,8 @@ The pipeline enriches `catalog-info.yaml` with dynamic metadata before registrat
         artifactName: catalog-metadata
 ```
 
-## Related Documents
+## Documentos Relacionados
 
-- [Azure Pipelines Configuration](../azure-pipelines.yml)
-- [TechDocs Configuration](../mkdocs.yml)
-- [Operations Runbook](../docs/runbooks/operations.md)
+- [Configuración de Azure Pipelines](../azure-pipelines.yml)
+- [Configuración de TechDocs](../mkdocs.yml)
+- [Runbook de Operaciones](../docs/runbooks/operations.md)

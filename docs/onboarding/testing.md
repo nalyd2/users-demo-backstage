@@ -1,24 +1,24 @@
-# Testing Guide — Users Service
+# Guía de Pruebas — Users Service
 
-## Scope
+## Alcance
 
-This document defines the testing strategy, standards, and practices for the Users Service. It covers the full testing pyramid — from fast unit tests through to end-to-end integration tests — and addresses service-specific concerns such as gRPC mocking of the Authentication Service, RBAC enforcement verification, and event consumer idempotency testing.
+Este documento define la estrategia, los estándares y las prácticas de pruebas para el Users Service. Cubre la pirámide completa de pruebas — desde pruebas unitarias rápidas hasta pruebas de integración de extremo a extremo — y aborda preocupaciones específicas del servicio como la simulación gRPC del Authentication Service, la verificación de la aplicación de RBAC y las pruebas de idempotencia del consumidor de eventos.
 
 ---
 
-## 1. Testing Philosophy
+## 1. Filosofía de Pruebas
 
-### 1.1 Principles
+### 1.1 Principios
 
-| Principle | Rationale |
+| Principio | Justificación |
 |---|---|
-| **Test behaviour, not implementation** | Tests should verify outcomes, not internal method calls. Refactoring the implementation should not require rewriting tests. |
-| **Deterministic by default** | Tests must produce the same result on every run. No flaky tests. Any non-determinism (time, random, async races) must be explicitly controlled. |
-| **Fast feedback** | The unit test suite must complete in under 30 seconds. Integration tests run in CI and pre-merge but are not part of the inner dev loop. |
-| **Realistic dependencies** | External services (PostgreSQL, Service Bus) are exercised through Testcontainers in integration tests, never mocked at that level. |
-| **Defence in depth** | Every security boundary (JWT validation, RBAC, tenant isolation) is covered at multiple test levels. |
+| **Probar comportamiento, no implementación** | Las pruebas deben verificar resultados, no llamadas a métodos internos. Refactorizar la implementación no debería requerir reescribir las pruebas. |
+| **Determinista por defecto** | Las pruebas deben producir el mismo resultado en cada ejecución. Sin pruebas inconsistentes. Cualquier no-determinismo (tiempo, aleatoriedad, condiciones de carrera asíncronas) debe estar explícitamente controlado. |
+| **Retroalimentación rápida** | El conjunto de pruebas unitarias debe completarse en menos de 30 segundos. Las pruebas de integración se ejecutan en CI y antes de la fusión, pero no forman parte del bucle de desarrollo interno. |
+| **Dependencias realistas** | Los servicios externos (PostgreSQL, Service Bus) se ejercitan a través de Testcontainers en las pruebas de integración, nunca simulados a ese nivel. |
+| **Defensa en profundidad** | Cada límite de seguridad (validación JWT, RBAC, aislamiento de tenants) está cubierto en múltiples niveles de prueba. |
 
-### 1.2 Test Levels
+### 1.2 Niveles de Prueba
 
 ```
             /\
@@ -26,28 +26,28 @@ This document defines the testing strategy, standards, and practices for the Use
           /    \
          / E2E \
         /--------\
-       /  Service \
-      /   Tests    \
+       /  Servicio \
+      /   Pruebas   \
      /--------------\
-    / Integration    \
-   /     Tests        \
+    / Integración    \
+   /   Pruebas        \
   /--------------------\
- /      Unit Tests      \
+ /  Pruebas Unitarias   \
 /------------------------\
 ```
 
-| Level | Speed | Scope | Purpose |
+| Nivel | Velocidad | Alcance | Propósito |
 |---|---|---|---|
-| **Unit** | < 5 ms/test | Single class in isolation | Business logic, validation rules, mapping, edge cases |
-| **Integration** | < 5 s/test | Service + real PostgreSQL + fake gRPC | Repository queries, RBAC enforcement, event publication |
-| **Service** | < 30 s/test | HTTP endpoint through middleware | Request pipeline, auth middleware, error handling, end-to-end flows |
-| **E2E** | < 5 min | Full deployment in ephemeral env | CI gate — smoke tests against a real staging environment |
+| **Unitaria** | < 5 ms/prueba | Clase única aislada | Lógica de negocio, reglas de validación, mapeo, casos límite |
+| **Integración** | < 5 s/prueba | Servicio + PostgreSQL real + gRPC ficticio | Consultas de repositorio, aplicación de RBAC, publicación de eventos |
+| **Servicio** | < 30 s/prueba | Endpoint HTTP a través del middleware | Pipeline de solicitudes, middleware de autenticación, manejo de errores, flujos de extremo a extremo |
+| **E2E** | < 5 min | Despliegue completo en entorno efímero | Puerta de CI — pruebas de humo contra un entorno de staging real |
 
 ---
 
-## 2. Test Infrastructure
+## 2. Infraestructura de Pruebas
 
-### 2.1 Project Structure
+### 2.1 Estructura del Proyecto
 
 ```
 tests/
@@ -82,21 +82,21 @@ tests/
       WebApplicationFactory.cs
 ```
 
-### 2.2 Test SDK and Tools
+### 2.2 SDK y Herramientas de Prueba
 
-| Tool | Version | Purpose |
+| Herramienta | Versión | Propósito |
 |---|---|---|
-| **xUnit** | 2.x | Test framework |
-| **FluentAssertions** | 7.x | Readable assertions |
-| **NSubstitute** | 5.x | Mocking and stubs |
-| **Testcontainers** | 4.x | Ephemeral PostgreSQL and Service Bus emulator |
-| **Microsoft.AspNetCore.TestHost** | 10.x | In-process HTTP server for service tests |
-| **Verify** | 26.x | Snapshot testing for JSON responses (optional) |
-| **Bogus** | 35.x | Realistic test data generation |
+| **xUnit** | 2.x | Framework de pruebas |
+| **FluentAssertions** | 7.x | Afirmaciones legibles |
+| **NSubstitute** | 5.x | Simulación y stubs |
+| **Testcontainers** | 4.x | PostgreSQL efímero y emulador de Service Bus |
+| **Microsoft.AspNetCore.TestHost** | 10.x | Servidor HTTP en proceso para pruebas de servicio |
+| **Verify** | 26.x | Pruebas de instantáneas para respuestas JSON (opcional) |
+| **Bogus** | 35.x | Generación realista de datos de prueba |
 
-### 2.3 Test Project Configuration
+### 2.3 Configuración del Proyecto de Pruebas
 
-The test project `.csproj` file must include these dependencies:
+El archivo `.csproj` del proyecto de pruebas debe incluir estas dependencias:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -129,9 +129,9 @@ The test project `.csproj` file must include these dependencies:
 </Project>
 ```
 
-### 2.4 Collection Fixtures
+### 2.4 Fixtures de Colección
 
-All integration tests share a database and Service Bus emulator via xUnit collection fixtures. This avoids starting a container per test.
+Todas las pruebas de integración comparten una base de datos y un emulador de Service Bus mediante fixtures de colección de xUnit. Esto evita iniciar un contenedor por prueba.
 
 ```csharp
 // Fixtures/TestDatabase.cs
@@ -160,8 +160,8 @@ public sealed class TestDatabase : IAsyncLifetime
 
     private async Task RunMigrationsAsync()
     {
-        // Execute all migration SQL scripts against the test database.
-        // See docs/runbooks/deployment.md for migration inventory.
+        // Ejecutar todos los scripts SQL de migración contra la base de datos de prueba.
+        // Consultar docs/runbooks/deployment.md para el inventario de migraciones.
         var sql = await File.ReadAllTextAsync("../../../Migrations/001_initial_schema.sql");
         await using var cmd = DataSource.CreateCommand(sql);
         await cmd.ExecuteNonQueryAsync();
@@ -185,7 +185,7 @@ public sealed class TestServiceBus : IAsyncLifetime
 ```
 
 ```csharp
-// Define a collection that groups integration tests sharing the same fixtures.
+// Definir una colección que agrupa las pruebas de integración que comparten los mismos fixtures.
 [CollectionDefinition("Integration")]
 public sealed class IntegrationCollection : ICollectionFixture<TestDatabase>, ICollectionFixture<TestServiceBus>
 {
@@ -194,27 +194,27 @@ public sealed class IntegrationCollection : ICollectionFixture<TestDatabase>, IC
 
 ---
 
-## 3. Unit Tests
+## 3. Pruebas Unitarias
 
-### 3.1 Scope
+### 3.1 Alcance
 
-Unit tests cover **pure business logic** and **domain rules** in isolation. All external dependencies (repositories, gRPC clients, Service Bus) are mocked.
+Las pruebas unitarias cubren **lógica de negocio pura** y **reglas de dominio** de forma aislada. Todas las dependencias externas (repositorios, clientes gRPC, Service Bus) se simulan.
 
-**What to unit-test:**
+**Qué probar unitariamente:**
 
-- `ProfileValidator` — username format, email format, uniqueness logic, role validity
-- `UserService` — orchestration logic, error handling, mapping
-- `UserEntity.ToDto()` — mapping entity to DTO
-- `AuthServiceClient` fallback behaviour (when JWKS cache is valid)
-- RBAC rule evaluation (without middleware)
+- `ProfileValidator` — formato de nombre de usuario, formato de correo electrónico, lógica de unicidad, validez de roles
+- `UserService` — lógica de orquestación, manejo de errores, mapeo
+- `UserEntity.ToDto()` — mapeo de entidad a DTO
+- Comportamiento de respaldo de `AuthServiceClient` (cuando la caché JWKS es válida)
+- Evaluación de reglas RBAC (sin middleware)
 
-**What NOT to unit-test:**
+**Qué NO probar unitariamente:**
 
-- Database queries (covered by integration tests)
-- HTTP serialization and routing (covered by service tests)
-- gRPC wire protocol (covered by integration tests with a fake server)
+- Consultas a la base de datos (cubiertas por pruebas de integración)
+- Serialización y enrutamiento HTTP (cubiertos por pruebas de servicio)
+- Protocolo de transmisión gRPC (cubierto por pruebas de integración con un servidor ficticio)
 
-### 3.2 Example: ProfileValidator Tests
+### 3.2 Ejemplo: Pruebas de ProfileValidator
 
 ```csharp
 namespace Platform.UsersService.Tests.Services;
@@ -231,13 +231,13 @@ public sealed class ProfileValidatorTests
 
     [Theory]
     [InlineData("john.doe", true)]
-    [InlineData("a", false)]                 // too short
-    [InlineData("John.Doe", false)]           // uppercase not allowed
-    [InlineData("john doe", false)]           // space not allowed
-    [InlineData("john@doe", false)]           // @ not allowed
-    [InlineData("a_b.c-d", true)]            // underscores, dots, hyphens allowed
-    [InlineData("", false)]                   // empty
-    [InlineData(null, false)]                 // null
+    [InlineData("a", false)]                 // demasiado corto
+    [InlineData("John.Doe", false)]           // mayúsculas no permitidas
+    [InlineData("john doe", false)]           // espacio no permitido
+    [InlineData("john@doe", false)]           // @ no permitido
+    [InlineData("a_b.c-d", true)]            // guiones bajos, puntos, guiones permitidos
+    [InlineData("", false)]                   // vacío
+    [InlineData(null, false)]                 // nulo
     public async Task ValidateUsername_Format(string username, bool expectedValid)
     {
         _repository.IsUsernameTakenAsync(username, Arg.Any<Guid>(), null, Arg.Any<CancellationToken>())
@@ -295,7 +295,7 @@ public sealed class ProfileValidatorTests
 }
 ```
 
-### 3.3 Example: UserService Tests
+### 3.3 Ejemplo: Pruebas de UserService
 
 ```csharp
 namespace Platform.UsersService.Tests.Services;
@@ -357,7 +357,7 @@ public sealed class UserServiceTests
         var request = new CreateUserRequest { Username = "ab", Email = "invalid" };
 
         _validator.ValidateAsync(request, tenantId, Arg.Any<CancellationToken>())
-            .Returns(ValidationResult.FromErrors(new[] { new ValidationError("Username", "INVALID_USERNAME", "Too short") }));
+            .Returns(ValidationResult.FromErrors(new[] { new ValidationError("Username", "INVALID_USERNAME", "Demasiado corto") }));
 
         var result = await _sut.CreateUserAsync(request, tenantId, CancellationToken.None);
 
@@ -395,9 +395,9 @@ public sealed class UserServiceTests
 }
 ```
 
-### 3.4 Mocking the Auth Service gRPC Client
+### 3.4 Simulación del Cliente gRPC del Auth Service
 
-The `AuthServiceClient` implements `IAuthServiceClient`. In unit tests, mock the **interface**, not the gRPC channel.
+El `AuthServiceClient` implementa `IAuthServiceClient`. En las pruebas unitarias, simula la **interfaz**, no el canal gRPC.
 
 ```csharp
 public interface IAuthServiceClient
@@ -413,51 +413,51 @@ public async Task AuthServiceClient_WhenGrpcFails_FallsBackToLocalJwks()
 {
     var authClient = Substitute.For<IAuthServiceClient>();
     authClient.ValidateTokenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-        .Returns(Task.FromResult<ClaimsPrincipal?>(null)); // simulate gRPC failure
+        .Returns(Task.FromResult<ClaimsPrincipal?>(null)); // simular fallo gRPC
 
     authClient.GetJwksAsync(Arg.Any<CancellationToken>())
-        .Returns(Task.FromResult<JwksDocument?>(new JwksDocument { /* cached keys */ }));
+        .Returns(Task.FromResult<JwksDocument?>(new JwksDocument { /* claves en caché */ }));
 
-    // The middleware should attempt gRPC first, then fall back to JWKS.
-    // Test the middleware in isolation with a fake token.
+    // El middleware debería intentar gRPC primero, luego recurrir a JWKS.
+    // Probar el middleware de forma aislada con un token ficticio.
 }
 ```
 
-**Important:** Never mock `GrpcChannel` or `Grpc.Core.CallInvoker` directly. The `AuthServiceClient` is an adapter; mock at the adapter boundary.
+**Importante:** Nunca simules `GrpcChannel` o `Grpc.Core.CallInvoker` directamente. El `AuthServiceClient` es un adaptador; simula en el límite del adaptador.
 
 ---
 
-## 4. Integration Tests
+## 4. Pruebas de Integración
 
-### 4.1 Scope
+### 4.1 Alcance
 
-Integration tests verify the service against **real infrastructure** running in ephemeral containers via Testcontainers. They cover:
+Las pruebas de integración verifican el servicio contra **infraestructura real** ejecutándose en contenedores efímeros mediante Testcontainers. Cubren:
 
-- Repository data access (Dapper + PostgreSQL)
-- Event publishing and consumption (Service Bus)
-- RBAC enforcement end-to-end through the HTTP pipeline
-- Tenant isolation and soft-delete behaviour
-- gRPC JWKS validation with a fake gRPC server
+- Acceso a datos del repositorio (Dapper + PostgreSQL)
+- Publicación y consumo de eventos (Service Bus)
+- Aplicación de RBAC de extremo a extremo a través del pipeline HTTP
+- Aislamiento de tenants y comportamiento de borrado lógico
+- Validación gRPC JWKS con un servidor gRPC ficticio
 
-### 4.2 Testcontainers Configuration
+### 4.2 Configuración de Testcontainers
 
-Two containers are required for integration tests:
+Se requieren dos contenedores para las pruebas de integración:
 
-| Container | Image | Purpose |
+| Contenedor | Imagen | Propósito |
 |---|---|---|
-| **PostgreSQL** | `postgres:16-alpine` | User data store |
-| **Azurite** | `mcr.microsoft.com/azure-storage/azurite:3.33` | Service Bus emulator |
+| **PostgreSQL** | `postgres:16-alpine` | Almacén de datos de usuario |
+| **Azurite** | `mcr.microsoft.com/azure-storage/azurite:3.33` | Emulador de Service Bus |
 
-**Test startup sequence:**
+**Secuencia de inicio de pruebas:**
 
-1. Start PostgreSQL container
-2. Run migrations against it
-3. Start Azurite container (emulates Service Bus queue)
-4. Seed test data
-5. Run tests
-6. Dispose containers (automatic via `IAsyncLifetime`)
+1. Iniciar contenedor PostgreSQL
+2. Ejecutar migraciones contra él
+3. Iniciar contenedor Azurite (emula la cola de Service Bus)
+4. Sembrar datos de prueba
+5. Ejecutar pruebas
+6. Desechar contenedores (automático mediante `IAsyncLifetime`)
 
-### 4.3 Example: Repository Tests
+### 4.3 Ejemplo: Pruebas de Repositorio
 
 ```csharp
 [Collection("Integration")]
@@ -495,7 +495,7 @@ public class UserRepositoryTests
         await _sut.SoftDeleteUserAsync(user.Id, tenantId, CancellationToken.None);
 
         var byDefault = await _sut.GetUserByIdAsync(user.Id, tenantId, CancellationToken.None);
-        byDefault.Should().BeNull("soft-deleted users are excluded by default");
+        byDefault.Should().BeNull("los usuarios eliminados lógicamente se excluyen por defecto");
 
         var explicitInclude = await _sut.GetUserByIdAsync(user.Id, tenantId, CancellationToken.None, includeDeleted: true);
         explicitInclude.Should().NotBeNull();
@@ -514,7 +514,7 @@ public class UserRepositoryTests
         var takenInB = await _sut.IsUsernameTakenAsync("common.user", tenantB, null, CancellationToken.None);
 
         takenInA.Should().BeTrue();
-        takenInB.Should().BeFalse("usernames are scoped per tenant");
+        takenInB.Should().BeFalse("los nombres de usuario tienen alcance por tenant");
     }
 
     [Fact]
@@ -543,9 +543,9 @@ public class UserRepositoryTests
 }
 ```
 
-### 4.4 Test Data Factory
+### 4.4 Fábrica de Datos de Prueba
 
-Use Bogus to generate realistic, non-deterministic test data:
+Usa Bogus para generar datos de prueba realistas y no deterministas:
 
 ```csharp
 // Fixtures/TestData.cs
@@ -590,11 +590,11 @@ public static class TestData
 
 ---
 
-## 5. Mocking the Auth Service gRPC
+## 5. Simulación del gRPC del Auth Service
 
-### 5.1 Fake gRPC Server Approach
+### 5.1 Enfoque de Servidor gRPC Ficticio
 
-For integration and service-level tests, start a **fake gRPC server** in-process that implements the `ValidateToken` RPC. This avoids a real dependency on the Authentication Service while exercising the actual gRPC client code in the service.
+Para las pruebas de integración y a nivel de servicio, inicia un **servidor gRPC ficticio** en proceso que implemente la RPC `ValidateToken`. Esto evita una dependencia real del Authentication Service mientras se ejercita el código real del cliente gRPC en el servicio.
 
 ```csharp
 // Fixtures/AuthServiceGrpcServer.cs
@@ -614,17 +614,17 @@ public sealed class AuthServiceGrpcServer : IAsyncDisposable
 
     public void SetupSuccessfulValidation(ClaimsPrincipal claims)
     {
-        // Store the claims so the fake handler returns them on the next ValidateToken call.
+        // Almacenar las claims para que el manejador ficticio las devuelva en la próxima llamada ValidateToken.
     }
 
     public void SetupFailure(string reason = "INVALID_TOKEN")
     {
-        // Configure the fake to return an error status.
+        // Configurar el ficticio para que devuelva un estado de error.
     }
 
     public void SetupLatency(TimeSpan delay)
     {
-        // Configure the fake to introduce artificial latency.
+        // Configurar el ficticio para que introduzca latencia artificial.
     }
 
     private WebApplication BuildServer()
@@ -633,8 +633,8 @@ public sealed class AuthServiceGrpcServer : IAsyncDisposable
         builder.WebHost.UseUrls($"http://0.0.0.0:{_port}");
 
         builder.Services.AddGrpc();
-        // Register a fake TokenValidationService that implements the same proto
-        // but returns configurable responses.
+        // Registrar un FakeTokenValidationService que implemente el mismo proto
+        // pero devuelva respuestas configurables.
 
         var app = builder.Build();
         app.MapGrpcService<FakeTokenValidationService>();
@@ -649,19 +649,19 @@ public sealed class AuthServiceGrpcServer : IAsyncDisposable
 }
 ```
 
-### 5.2 Configuring the Fake for Different Scenarios
+### 5.2 Configuración del Ficticio para Diferentes Escenarios
 
-| Scenario | Fake Configuration | Test Verifies |
+| Escenario | Configuración del Ficticio | La Prueba Verifica |
 |---|---|---|
-| Valid token | Return `{ valid: true, claims: {...} }` | Request proceeds to handler |
-| Expired token | Return `{ valid: false, reason: "EXPIRED" }` | 401 response |
-| Invalid signature | Return `{ valid: false, reason: "INVALID_SIGNATURE" }` | 401 response |
-| gRPC timeout | Hang for 2 seconds (client timeout is 500ms) | Fallback to JWKS cache |
-| gRPC unavailable | Refuse connection | Fallback to JWKS cache, then 503 |
-| JWKS cache hit | Pre-populate cache, shut down gRPC server | Validates locally, returns 200 |
-| Role missing | Return claims without `roles` claim | 403 response |
+| Token válido | Devolver `{ valid: true, claims: {...} }` | La solicitud procede al manejador |
+| Token expirado | Devolver `{ valid: false, reason: "EXPIRED" }` | Respuesta 401 |
+| Firma inválida | Devolver `{ valid: false, reason: "INVALID_SIGNATURE" }` | Respuesta 401 |
+| Timeout gRPC | Esperar 2 segundos (el timeout del cliente es 500ms) | Recurso a la caché JWKS |
+| gRPC no disponible | Rechazar conexión | Recurso a la caché JWKS, luego 503 |
+| Acierto en caché JWKS | Precargar caché, apagar servidor gRPC | Valida localmente, devuelve 200 |
+| Rol faltante | Devolver claims sin la claim `roles` | Respuesta 403 |
 
-### 5.3 Example: Testing the Fallback Strategy
+### 5.3 Ejemplo: Prueba de la Estrategia de Respaldo
 
 ```csharp
 [Collection("Integration")]
@@ -677,7 +677,7 @@ public class AuthServiceClientTests
     [Fact]
     public async Task ValidateTokenAsync_WhenGrpcTimesOut_ValidatesFromJwksCache()
     {
-        // Arrange: gRPC will be slow, but JWKS cache is pre-populated
+        // Arrange: gRPC será lento, pero la caché JWKS está precargada
         _fakeAuth.SetupLatency(TimeSpan.FromSeconds(2));
 
         var settings = new AuthServiceOptions
@@ -688,7 +688,7 @@ public class AuthServiceClientTests
         };
 
         var cache = new JwksCache(settings);
-        cache.Seed(TestData.ValidJwksDocument()); // pre-populate
+        cache.Seed(TestData.ValidJwksDocument()); // precargar
 
         var sut = new AuthServiceClient(settings, cache);
 
@@ -703,7 +703,7 @@ public class AuthServiceClientTests
     [Fact]
     public async Task ValidateTokenAsync_WhenGrpcUnavailableAndCacheEmpty_ReturnsNull()
     {
-        // Arrange: no gRPC and no cache
+        // Arrange: sin gRPC y sin caché
         _fakeAuth.SetupFailure("UNAVAILABLE");
         var settings = new AuthServiceOptions
         {
@@ -712,7 +712,7 @@ public class AuthServiceClientTests
             GrpcTimeout = TimeSpan.FromMilliseconds(500)
         };
 
-        var cache = new JwksCache(settings); // empty cache
+        var cache = new JwksCache(settings); // caché vacía
         var sut = new AuthServiceClient(settings, cache);
 
         // Act
@@ -726,20 +726,20 @@ public class AuthServiceClientTests
 
 ---
 
-## 6. Testing RBAC Enforcement
+## 6. Pruebas de Aplicación de RBAC
 
-### 6.1 Approach
+### 6.1 Enfoque
 
-RBAC enforcement is tested at **three levels**:
+La aplicación de RBAC se prueba en **tres niveles**:
 
-1. **Unit** — The RBAC evaluation function is tested in isolation with role/action matrices
-2. **Service** — The full HTTP pipeline is tested with TestHost, exercising JWT middleware and endpoint handlers
-3. **Integration** — A real database ensures tenant-scoped queries respect the RBAC boundary
+1. **Unitaria** — La función de evaluación RBAC se prueba de forma aislada con matrices de rol/acción
+2. **Servicio** — El pipeline HTTP completo se prueba con TestHost, ejercitando el middleware JWT y los manejadores de endpoints
+3. **Integración** — Una base de datos real asegura que las consultas con alcance de tenant respeten el límite RBAC
 
-### 6.2 RBAC Evaluation Rules
+### 6.2 Reglas de Evaluación RBAC
 
 ```csharp
-// RbacService.cs (production code)
+// RbacService.cs (código de producción)
 public static class RbacService
 {
     public static bool IsActionAllowed(string[] userRoles, string action, string resourceOwnerId, string requestorId)
@@ -752,7 +752,7 @@ public static class RbacService
             {
                 "users:list" => true,
                 "users:read" => true,
-                "users:update" => true, // limited fields enforced middleware
+                "users:update" => true, // campos limitados aplicados por middleware
                 _ => false
             };
         }
@@ -772,7 +772,7 @@ public static class RbacService
 }
 ```
 
-### 6.3 RBAC Unit Tests
+### 6.3 Pruebas Unitarias de RBAC
 
 ```csharp
 public class RbacServiceTests
@@ -785,8 +785,8 @@ public class RbacServiceTests
     [InlineData("operator", "users:read", true)]
     [InlineData("operator", "users:create", false)]
     [InlineData("operator", "users:delete", false)]
-    [InlineData("user", "users:read", true)]  // own profile
-    [InlineData("user", "users:read", false)] // other's profile
+    [InlineData("user", "users:read", true)]  // perfil propio
+    [InlineData("user", "users:read", false)] // perfil de otro
     [InlineData("user", "users:create", false)]
     [InlineData("user", "users:delete", false)]
     [InlineData("nonexistent", "users:read", false)]
@@ -796,7 +796,7 @@ public class RbacServiceTests
         var otherUserId = Guid.NewGuid();
         var resourceId = action == "users:read" && expected && role == "user" ? ownUserId : otherUserId;
 
-        // For the self-only test case that expects false:
+        // Para el caso de prueba de solo propio que espera false:
         var testResourceId = (role == "user" && action == "users:read" && !expected)
             ? otherUserId
             : resourceId;
@@ -824,9 +824,9 @@ public class RbacServiceTests
 }
 ```
 
-### 6.4 Service-Level RBAC Tests
+### 6.4 Pruebas RBAC a Nivel de Servicio
 
-Use `WebApplicationFactory` (from `Microsoft.AspNetCore.TestHost`) to run the full HTTP pipeline with fake authentication:
+Usa `WebApplicationFactory` (de `Microsoft.AspNetCore.TestHost`) para ejecutar el pipeline HTTP completo con autenticación ficticia:
 
 ```csharp
 // Fixtures/WebApplicationFactory.cs
@@ -841,13 +841,13 @@ public class UsersApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
-            // Replace real gRPC client with one pointing at our fake
+            // Reemplazar el cliente gRPC real por uno que apunte a nuestro ficticio
             services.AddSingleton<IAuthServiceClient>(sp =>
                 new AuthServiceClient(
                     sp.GetRequiredService<IOptions<AuthServiceOptions>>(),
                     sp.GetRequiredService<JwksCache>()));
 
-            // Use in-memory Service Bus for tests
+            // Usar Service Bus en memoria para pruebas
             services.AddSingleton<IEventPublisher, InMemoryEventPublisher>();
         });
     }
@@ -980,7 +980,7 @@ public class RbacEnforcementTests : IClassFixture<UsersApiFactory>
     public async Task UnauthenticatedRequest_Returns401()
     {
         var client = _factory.CreateClient();
-        // No Authorization header
+        // Sin cabecera Authorization
 
         var response = await client.GetAsync("/api/users");
 
@@ -989,7 +989,7 @@ public class RbacEnforcementTests : IClassFixture<UsersApiFactory>
 }
 ```
 
-### 6.5 Tenant Isolation Test
+### 6.5 Prueba de Aislamiento de Tenants
 
 ```csharp
 [Collection("Integration")]
@@ -1003,11 +1003,11 @@ public class MultiTenancyTests : IClassFixture<UsersApiFactory>
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
 
-        // Seed: create user in tenant B via the repository directly
+        // Sembrar: crear usuario en el tenant B directamente a través del repositorio
         var tenantBUser = TestData.GenerateUserEntity(tenantId: tenantB);
         await _factory.SeedUserAsync(tenantBUser);
 
-        // Act: request as tenant A
+        // Act: solicitar como tenant A
         _factory.FakeAuth.SetupSuccessfulValidation(TestData.AdminClaims(tenantId: tenantA));
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestData.ValidToken());
@@ -1015,22 +1015,22 @@ public class MultiTenancyTests : IClassFixture<UsersApiFactory>
         var response = await client.GetAsync($"/api/users/{tenantBUser.Id}");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound,
-            "users from tenant B should not be visible to tenant A");
+            "los usuarios del tenant B no deberían ser visibles para el tenant A");
     }
 }
 ```
 
 ---
 
-## 7. Testing Event Consumer Idempotency
+## 7. Pruebas de Idempotencia del Consumidor de Eventos
 
-### 7.1 The Problem
+### 7.1 El Problema
 
-The Auth Service publishes events with **at-least-once delivery** guarantees. The Users Service event consumer must handle duplicate delivery of the same event without producing side effects.
+El Auth Service publica eventos con garantías de **entrega al menos una vez**. El consumidor de eventos del Users Service debe manejar la entrega duplicada del mismo evento sin producir efectos secundarios.
 
-### 7.2 Deduplication Strategy
+### 7.2 Estrategia de Deduplicación
 
-The consumer records processed `eventId` values in a deduplication table:
+El consumidor registra los valores de `eventId` procesados en una tabla de deduplicación:
 
 ```sql
 CREATE TABLE event_deduplication (
@@ -1038,13 +1038,13 @@ CREATE TABLE event_deduplication (
     processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Cleanup job: purge records older than 7 days
+-- Trabajo de limpieza: purgar registros con más de 7 días
 CREATE INDEX idx_event_dedup_processed ON event_deduplication(processed_at);
 ```
 
-Before processing an event, the consumer checks this table. If the `eventId` exists, the event is acknowledged without processing.
+Antes de procesar un evento, el consumidor verifica esta tabla. Si el `eventId` existe, el evento se reconoce sin procesamiento.
 
-### 7.3 Idempotency Tests
+### 7.3 Pruebas de Idempotencia
 
 ```csharp
 [Collection("Integration")]
@@ -1097,7 +1097,7 @@ public class EventConsumerTests
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        // Act: process the same event twice
+        // Act: procesar el mismo evento dos veces
         await _consumer.HandleAsync(loginEvent, CancellationToken.None);
         var firstLogin = (await _repository.GetUserByIdAsync(user.Id, user.TenantId, CancellationToken.None, includeDeleted: true))!.LastLoginAt;
 
@@ -1105,7 +1105,7 @@ public class EventConsumerTests
         var secondLogin = (await _repository.GetUserByIdAsync(user.Id, user.TenantId, CancellationToken.None, includeDeleted: true))!.LastLoginAt;
 
         // Assert
-        firstLogin.Should().Be(secondLogin, "duplicate event should be idempotent");
+        firstLogin.Should().Be(secondLogin, "el evento duplicado debe ser idempotente");
     }
 
     [Fact]
@@ -1138,7 +1138,7 @@ public class EventConsumerTests
     [Fact]
     public async Task ProcessEventsInOrder_PerUserId()
     {
-        // Arrange: send user.login then user.logout for the same user
+        // Arrange: enviar user.login luego user.logout para el mismo usuario
         var user = TestData.GenerateUserEntity();
         await _repository.CreateUserAsync(user, CancellationToken.None);
 
@@ -1160,7 +1160,7 @@ public class EventConsumerTests
         await _consumer.HandleAsync(loginEvent, CancellationToken.None);
         await _consumer.HandleAsync(logoutEvent, CancellationToken.None);
 
-        // Assert: last_login_at was set by the login event
+        // Assert: last_login_at fue establecido por el evento de inicio de sesión
         var fetched = await _repository.GetUserByIdAsync(user.Id, user.TenantId, CancellationToken.None, includeDeleted: true);
         fetched!.LastLoginAt.Should().BeCloseTo(loginEvent.Timestamp, TimeSpan.FromSeconds(1));
     }
@@ -1168,8 +1168,8 @@ public class EventConsumerTests
     [Fact]
     public async Task ConsumeTokenRevokedEvent_RecordsAuditEntry()
     {
-        // TODO: implement after audit logging is added
-        // Ensures token.revoked events create an audit log entry
+        // TODO: implementar después de que se agregue el registro de auditoría
+        // Asegura que los eventos token.revoked creen una entrada de registro de auditoría
     }
 
     [Theory]
@@ -1195,58 +1195,58 @@ public class EventConsumerTests
     [Fact]
     public async Task DeadLetterEvent_AfterConsecutiveFailures()
     {
-        // Arrange: malformed event that always fails deserialization
+        // Arrange: evento mal formado que siempre falla la deserialización
         var malformedEvent = new { type = "user.login", data = "not-valid" };
 
-        // The consumer should attempt delivery and, after max retries (10),
-        // move the message to the dead-letter queue.
-        // This test verifies the dead-letter count on the Service Bus message.
+        // El consumidor debería intentar la entrega y, después de los reintentos máximos (10),
+        // mover el mensaje a la cola de mensajes fallidos.
+        // Esta prueba verifica el conteo de mensajes fallidos en el mensaje de Service Bus.
     }
 }
 ```
 
-### 7.4 Concurrency Test: Racing Duplicates
+### 7.4 Prueba de Concurrencia: Duplicados en Competencia
 
 ```csharp
 [Fact]
 public async Task ConcurrentDeliveryOfDuplicateEvents_IsIdempotent()
 {
-    // This test simulates Service Bus delivering the same event twice concurrently.
-    // Only one should succeed in updating the database.
+    // Esta prueba simula que Service Bus entrega el mismo evento dos veces de forma concurrente.
+    // Solo uno debería tener éxito en actualizar la base de datos.
     var user = TestData.GenerateUserEntity();
     await _repository.CreateUserAsync(user, CancellationToken.None);
 
     var loginEvent = new UserLoginEvent
     {
-        EventId = Guid.NewGuid(),  // same event ID
+        EventId = Guid.NewGuid(),  // mismo ID de evento
         UserId = user.Id,
         Timestamp = DateTimeOffset.UtcNow
     };
 
-    // Act: fire two handlers concurrently
+    // Act: ejecutar dos manejadores concurrentemente
     var task1 = _consumer.HandleAsync(loginEvent, CancellationToken.None);
     var task2 = _consumer.HandleAsync(loginEvent, CancellationToken.None);
     await Task.WhenAll(task1, task2);
 
-    // Assert: last_login_at was updated exactly once
+    // Assert: last_login_at se actualizó exactamente una vez
     var fetched = await _repository.GetUserByIdAsync(user.Id, user.TenantId, CancellationToken.None, includeDeleted: true);
     var updatedCount = await _db.DataSource.QuerySingleAsync<int>(
         "SELECT COUNT(*) FROM users WHERE id = @id AND last_login_at IS NOT NULL",
         new { id = user.Id });
 
-    updatedCount.Should().Be(1, "duplicate concurrent delivery should not double-update");
+    updatedCount.Should().Be(1, "la entrega concurrente duplicada no debería actualizar dos veces");
 }
 ```
 
 ---
 
-## 8. Service Tests (HTTP Pipeline)
+## 8. Pruebas de Servicio (Pipeline HTTP)
 
-### 8.1 Scope
+### 8.1 Alcance
 
-Service tests exercise the full HTTP request pipeline — middleware, model binding, validation, and error handling — against an in-process `TestServer`. They use the same `UsersApiFactory` from section 6.4.
+Las pruebas de servicio ejercitan el pipeline completo de solicitudes HTTP — middleware, enlace de modelos, validación y manejo de errores — contra un `TestServer` en proceso. Usan el mismo `UsersApiFactory` de la sección 6.4.
 
-### 8.2 Example: Error Handling Tests
+### 8.2 Ejemplo: Pruebas de Manejo de Errores
 
 ```csharp
 [Collection("Integration")]
@@ -1261,7 +1261,7 @@ public class UsersApiErrorHandlingTests : IClassFixture<UsersApiFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestData.ValidToken());
 
-        var invalidBody = new { }; // missing required fields
+        var invalidBody = new { }; // campos requeridos faltantes
 
         var response = await client.PostAsJsonAsync("/api/users", invalidBody);
 
@@ -1279,8 +1279,8 @@ public class UsersApiErrorHandlingTests : IClassFixture<UsersApiFactory>
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestData.ValidToken());
 
         var request = TestData.GenerateCreateRequest("unique.user");
-        await client.PostAsJsonAsync("/api/users", request); // first: succeeds
-        var response = await client.PostAsJsonAsync("/api/users", request); // second: conflict
+        await client.PostAsJsonAsync("/api/users", request); // primero: éxito
+        var response = await client.PostAsJsonAsync("/api/users", request); // segundo: conflicto
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -1310,7 +1310,7 @@ public class UsersApiErrorHandlingTests : IClassFixture<UsersApiFactory>
     [Fact]
     public async Task ReadinessProbe_ReportsDegraded_WhenDatabaseUnreachable()
     {
-        // Arrange: stop the database container
+        // Arrange: detener el contenedor de la base de datos
         await _factory.StopDatabaseAsync();
         _factory.FakeAuth.SetupSuccessfulValidation(TestData.AdminClaims());
 
@@ -1326,9 +1326,9 @@ public class UsersApiErrorHandlingTests : IClassFixture<UsersApiFactory>
 }
 ```
 
-### 8.3 Snapshot Testing (Optional with Verify)
+### 8.3 Pruebas de Instantáneas (Opcional con Verify)
 
-For endpoints that return complex JSON, consider snapshot testing with the **[Verify](https://github.com/VerifyTests/Verify)** library. This automatically manages `.verified.txt` files and diffs changes on rebuild.
+Para endpoints que devuelven JSON complejo, considera las pruebas de instantáneas con la librería **[Verify](https://github.com/VerifyTests/Verify)**. Esto gestiona automáticamente los archivos `.verified.txt` y muestra las diferencias al reconstruir.
 
 ```csharp
 [Fact]
@@ -1338,7 +1338,7 @@ public async Task GetUsers_MatchSnapshot()
     var client = _factory.CreateClient();
     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestData.ValidToken());
 
-    // Seed a known set of users
+    // Sembrar un conjunto conocido de usuarios
     await _factory.SeedUserAsync(TestData.GenerateUserEntity(username: "alice"));
     await _factory.SeedUserAsync(TestData.GenerateUserEntity(username: "bob"));
 
@@ -1350,11 +1350,11 @@ public async Task GetUsers_MatchSnapshot()
 
 ---
 
-## 9. Performance and Load Tests
+## 9. Pruebas de Rendimiento y Carga
 
-### 9.1 Location
+### 9.1 Ubicación
 
-Load tests live in a separate directory at the repository root:
+Las pruebas de carga residen en un directorio separado en la raíz del repositorio:
 
 ```
 tests/
@@ -1366,38 +1366,38 @@ tests/
       ConcurrentUpdatesScenario.cs
 ```
 
-### 9.2 Tooling
+### 9.2 Herramientas
 
-| Tool | Purpose |
+| Herramienta | Propósito |
 |---|---|
-| **NBomber** | .NET load-testing framework for writing scenarios in C# |
-| **k6** | JavaScript-based load testing for HTTP endpoints (CI integration) |
+| **NBomber** | Framework de pruebas de carga .NET para escribir escenarios en C# |
+| **k6** | Pruebas de carga basadas en JavaScript para endpoints HTTP (integración CI) |
 
-### 9.3 Key Scenarios
+### 9.3 Escenarios Clave
 
-| Scenario | Target | RPS | Duration | Assertions |
+| Escenario | Objetivo | RPS | Duración | Afirmaciones |
 |---|---|---|---|---|
-| List users, page 1 | `GET /api/users?pageSize=20` | 200 | 5 min | p99 < 200ms, 0% errors |
-| Get user by ID | `GET /api/users/{id}` | 500 | 5 min | p99 < 100ms, 0% errors |
-| Create user | `POST /api/users` | 50 | 5 min | p99 < 500ms, 0% 5xx |
-| Concurrent duplicate create | `POST /api/users` (same data) | 10 | 1 min | Exactly one 201, rest 409 |
-| Event consumption lag | Simulate 1000 login events | — | 1 min | p99 processing < 50ms/event |
+| Listar usuarios, página 1 | `GET /api/users?pageSize=20` | 200 | 5 min | p99 < 200ms, 0% errores |
+| Obtener usuario por ID | `GET /api/users/{id}` | 500 | 5 min | p99 < 100ms, 0% errores |
+| Crear usuario | `POST /api/users` | 50 | 5 min | p99 < 500ms, 0% 5xx |
+| Creación duplicada concurrente | `POST /api/users` (mismos datos) | 10 | 1 min | Exactamente un 201, resto 409 |
+| Retraso en consumo de eventos | Simular 1000 eventos de inicio de sesión | — | 1 min | p99 procesamiento < 50ms/evento |
 
 ---
 
-## 10. CI Test Requirements
+## 10. Requisitos de Pruebas en CI
 
-### 10.1 Pipeline Stages
+### 10.1 Etapas del Pipeline
 
 ```yaml
-# azure-pipelines.yml (extract)
+# azure-pipelines.yml (extracto)
 trigger:
   - main
   - release/*
 
 jobs:
   - job: validate
-    displayName: "Validate"
+    displayName: "Validar"
     steps:
       - task: UseDotNet@2
         inputs:
@@ -1406,118 +1406,118 @@ jobs:
       - script: dotnet format --verify-no-changes
       - script: dotnet build --no-restore -warnaserror
       - script: dotnet test --no-build --filter "Category=Unit" --collect "XPlat Code Coverage"
-        displayName: "Unit Tests"
+        displayName: "Pruebas Unitarias"
 
   - job: integration
     dependsOn: validate
-    displayName: "Integration Tests"
+    displayName: "Pruebas de Integración"
     steps:
       - task: UseDotNet@2
         inputs:
           version: "10.0.x"
       - script: dotnet build -c Release
       - script: dotnet test --no-build -c Release --filter "Category=Integration"
-        displayName: "Integration Tests"
+        displayName: "Pruebas de Integración"
 
   - job: security_scan
     dependsOn: validate
-    displayName: "Security & Quality"
+    displayName: "Seguridad y Calidad"
     steps:
       - script: dotnet list package --vulnerable --include-transitive
-        displayName: "Vulnerability Scan"
+        displayName: "Escaneo de Vulnerabilidades"
       - script: dotnet sonarscanner begin /k:users-service /d:sonar.token=$(SONAR_TOKEN)
       - script: dotnet build
       - script: dotnet sonarscanner end /d:sonar.token=$(SONAR_TOKEN)
 ```
 
-### 10.2 Test Categories
+### 10.2 Categorías de Pruebas
 
-Tag tests with xUnit `[Trait]` attributes for targeted execution:
+Etiqueta las pruebas con atributos `[Trait]` de xUnit para ejecución selectiva:
 
 ```csharp
 [Trait("Category", "Unit")]
 [Trait("Category", "Integration")]
 [Trait("Category", "RBAC")]
 [Trait("Category", "Idempotency")]
-[Trait("Category", "Slow")] // tests that take > 5 seconds
+[Trait("Category", "Slow")] // pruebas que toman > 5 segundos
 ```
 
-| Category | Runs in | Exclusion |
+| Categoría | Se Ejecuta En | Exclusión |
 |---|---|---|
-| `Unit` | Every commit | — |
-| `Integration` | PR merge, nightly | — |
-| `RBAC` | PR merge, nightly | Included in Integration |
-| `Idempotency` | PR merge, nightly | Included in Integration |
-| `Slow` | Nightly only | Excluded from PR pipeline |
+| `Unit` | Cada commit | — |
+| `Integration` | Fusión PR, nocturno | — |
+| `RBAC` | Fusión PR, nocturno | Incluida en Integration |
+| `Idempotency` | Fusión PR, nocturno | Incluida en Integration |
+| `Slow` | Solo nocturno | Excluida del pipeline PR |
 
-### 10.3 Test Execution Commands
+### 10.3 Comandos de Ejecución de Pruebas
 
 ```bash
-# All unit tests (inner dev loop)
+# Todas las pruebas unitarias (bucle de desarrollo interno)
 dotnet test --filter "Category=Unit"
 
-# All integration tests (pre-merge)
+# Todas las pruebas de integración (pre-fusión)
 dotnet test --filter "Category=Integration"
 
-# Exclude slow tests (PR pipeline, < 2 min)
+# Excluir pruebas lentas (pipeline PR, < 2 min)
 dotnet test --filter "Category!=Slow"
 
-# Specific area
+# Área específica
 dotnet test --filter "FullyQualifiedName~RbacEnforcement"
 
-# With coverage
+# Con cobertura
 dotnet test --collect "XPlat Code Coverage" --results-directory ./TestResults
 dotnet tool run reportgenerator -reports:./TestResults/**/coverage.cobertura.xml -targetdir:./CoverageReport -reporttypes:HtmlInline
 
-# Load tests
+# Pruebas de carga
 dotnet run --project tests/Performance/UsersService.LoadTest.csproj
 ```
 
-### 10.4 Quality Gates
+### 10.4 Puertas de Calidad
 
-| Gate | Threshold | Pipeline Stage | Action |
+| Puerta | Umbral | Etapa del Pipeline | Acción |
 |---|---|---|---|
-| **Unit test pass rate** | 100% | Validate | Block merge |
-| **Integration test pass rate** | 100% | Integration | Block merge |
-| **Code coverage** | >= 80% line, >= 70% branch | Integration | Warning, block at 70% |
-| **SonarQube quality gate** | Pass | Security | Block merge |
-| **Vulnerable packages** | Zero critical/high | Security | Block merge |
-| **Flaky test count** | 0 | All | Block release |
-| **Performance regression** | p99 not exceeding baseline by > 20% | Nightly | Block release |
+| **Tasa de aprobación de pruebas unitarias** | 100% | Validar | Bloquear fusión |
+| **Tasa de aprobación de pruebas de integración** | 100% | Integration | Bloquear fusión |
+| **Cobertura de código** | >= 80% línea, >= 70% rama | Integration | Advertencia, bloquear al 70% |
+| **Puerta de calidad SonarQube** | Aprobado | Security | Bloquear fusión |
+| **Paquetes vulnerables** | Cero críticos/altos | Security | Bloquear fusión |
+| **Conteo de pruebas inconsistentes** | 0 | Todas | Bloquear lanzamiento |
+| **Regresión de rendimiento** | p99 que no exceda la línea base en > 20% | Nocturno | Bloquear lanzamiento |
 
-### 10.5 Flaky Test Management
+### 10.5 Gestión de Pruebas Inconsistentes
 
-1. **Mark flaky tests** with `[Trait("Flaky", "true")]` and suppress from PR gate
-2. **File a bug** in Azure DevOps with the `flaky-test` tag
-3. **Auto-retry:** The pipeline retries each test once (via `dotnet test --retry 1`)
-4. **Quarterly review:** Flaky tests older than 3 months are escalated to the team lead
-
----
-
-## 11. Writing Tests — Checklist
-
-- [ ] Tests are deterministic — no reliance on `DateTime.UtcNow` without a time provider abstraction (`ITimeProvider`)
-- [ ] Tests use `[Theory]` with `[InlineData]` for parameterized scenarios, not copy-paste
-- [ ] Mocks are set up with `Arg.Any<CancellationToken>()` to avoid brittle matching
-- [ ] Async test methods end with `Async` suffix
-- [ ] Assertions use `FluentAssertions` for readability
-- [ ] Test data is generated via `Bogus` (not hardcoded)
-- [ ] No `Thread.Sleep` or `Task.Delay` for synchronization — use `TaskCompletionSource` or `SemaphoreSlim`
-- [ ] Integration tests are tagged `[Category("Integration")]`
-- [ ] Slow integration tests (over 5 s) are tagged `[Category("Slow")]`
-- [ ] gRPC is mocked at the `IAuthServiceClient` interface, not at the transport layer
-- [ ] Event idempotency tests cover duplicate delivery and concurrent delivery
-- [ ] RBAC tests cover every cell in the permission matrix
-- [ ] Tenant isolation tests verify cross-tenant data is invisible
+1. **Marcar pruebas inconsistentes** con `[Trait("Flaky", "true")]` y suprimir de la puerta PR
+2. **Registrar un bug** en Azure DevOps con la etiqueta `flaky-test`
+3. **Reintento automático:** El pipeline reintenta cada prueba una vez (mediante `dotnet test --retry 1`)
+4. **Revisión trimestral:** Las pruebas inconsistentes con más de 3 meses se escalan al líder del equipo
 
 ---
 
-## 12. Related Documents
+## 11. Lista de Verificación para Escribir Pruebas
 
-- [Developer Guide](developer-guide.md) — architecture walkthrough for new team members
-- [Local Development](local-development.md) — setting up the local environment
-- [Technology Stack](../architecture/technology-stack.md) — test tool versions and licenses
-- [Security Architecture](../architecture/security.md) — RBAC matrix and threat model
-- [Events API](../api/events.md) — consumed and published event schemas
-- [Coding Standards](../decisions/coding-standards.md) — code style for test code
-- [CI/CD Pipeline](https://dev.azure.com/platform/_build?definitionId=101) — Azure DevOps pipeline definition
+- [ ] Las pruebas son deterministas — sin dependencia de `DateTime.UtcNow` sin una abstracción de proveedor de tiempo (`ITimeProvider`)
+- [ ] Las pruebas usan `[Theory]` con `[InlineData]` para escenarios parametrizados, no copiar y pegar
+- [ ] Los simulacros se configuran con `Arg.Any<CancellationToken>()` para evitar coincidencias frágiles
+- [ ] Los métodos de prueba asíncronos terminan con el sufijo `Async`
+- [ ] Las afirmaciones usan `FluentAssertions` para legibilidad
+- [ ] Los datos de prueba se generan mediante `Bogus` (no hardcodeados)
+- [ ] Sin `Thread.Sleep` o `Task.Delay` para sincronización — usar `TaskCompletionSource` o `SemaphoreSlim`
+- [ ] Las pruebas de integración están etiquetadas `[Category("Integration")]`
+- [ ] Las pruebas de integración lentas (más de 5 s) están etiquetadas `[Category("Slow")]`
+- [ ] gRPC se simula en la interfaz `IAuthServiceClient`, no en la capa de transporte
+- [ ] Las pruebas de idempotencia de eventos cubren entrega duplicada y entrega concurrente
+- [ ] Las pruebas RBAC cubren cada celda de la matriz de permisos
+- [ ] Las pruebas de aislamiento de tenants verifican que los datos entre tenants sean invisibles
+
+---
+
+## 12. Documentos Relacionados
+
+- [Guía del Desarrollador](developer-guide.md) -- recorrido arquitectónico para nuevos miembros del equipo
+- [Desarrollo Local](local-development.md) -- configuración del entorno local
+- [Stack Tecnológico](../architecture/technology-stack.md) -- versiones de herramientas de prueba y licencias
+- [Arquitectura de Seguridad](../architecture/security.md) -- matriz RBAC y modelo de amenazas
+- [API de Eventos](../api/events.md) -- esquemas de eventos consumidos y publicados
+- [Estándares de Codificación](../decisions/coding-standards.md) -- estilo de código para código de prueba
+- [Pipeline CI/CD](https://dev.azure.com/platform/_build?definitionId=101) -- definición del pipeline de Azure DevOps

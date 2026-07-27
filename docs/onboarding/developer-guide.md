@@ -1,43 +1,43 @@
-# Developer Guide -- Users Service
+# Guía del Desarrollador -- Users Service
 
-This guide is the entry point for engineers working on the **Users Service** (`users-service`). It covers the architecture, codebase layout, step-by-step instructions for adding endpoints, the RBAC model, the event consumer pattern, and the pitfalls that trip up new team members.
-
----
-
-## Table of Contents
-
-- [Architecture Walkthrough](#architecture-walkthrough)
-    - [Dependency on the Authentication Service](#dependency-on-the-authentication-service)
-    - [Hexagonal (Ports & Adapters) Layout](#hexagonal-ports--adapters-layout)
-    - [Request Lifecycle](#request-lifecycle)
-- [Code Organization](#code-organization)
-    - [Source Layout](#source-layout)
-    - [Namespace Convention](#namespace-convention)
-    - [Key Files Cheat Sheet](#key-files-cheat-sheet)
-- [How to Add a New Endpoint](#how-to-add-a-new-endpoint)
-    - [Step 1: Define Request / Response DTOs](#step-1-define-request--response-dtos)
-    - [Step 2: Add the Route](#step-2-add-the-route)
-    - [Step 3: Wire the Application Service](#step-3-wire-the-application-service)
-    - [Step 4: Add Validation](#step-4-add-validation)
-    - [Step 5: Register Dependencies](#step-5-register-dependencies)
-- [RBAC Enforcement](#rbac-enforcement)
-    - [Role Policy Authorisation](#role-policy-authorisation)
-    - [Endpoint-Level Checks](#endpoint-level-checks)
-    - [Field-Level Permissions on Update](#field-level-permissions-on-update)
-- [Event Consumer Pattern](#event-consumer-pattern)
-    - [Consumed Events (from Auth Service)](#consumed-events-from-auth-service)
-    - [Published Events (to the Platform)](#published-events-to-the-platform)
-    - [Writing a New Consumer](#writing-a-new-consumer)
-- [Common Pitfalls](#common-pitfalls)
-- [Related Documents](#related-documents)
+Esta guía es el punto de entrada para los ingenieros que trabajan en el **Users Service** (`users-service`). Cubre la arquitectura, la organización del código, instrucciones paso a paso para agregar endpoints, el modelo RBAC, el patrón de consumidor de eventos y los problemas comunes que enfrentan los nuevos miembros del equipo.
 
 ---
 
-## Architecture Walkthrough
+## Tabla de Contenidos
 
-### Dependency on the Authentication Service
+- [Recorrido Arquitectónico](#recorrido-arquitectónico)
+    - [Dependencia del Authentication Service](#dependencia-del-authentication-service)
+    - [Distribución Hexagonal (Puertos y Adaptadores)](#distribución-hexagonal-puertos-y-adaptadores)
+    - [Ciclo de Vida de una Solicitud](#ciclo-de-vida-de-una-solicitud)
+- [Organización del Código](#organización-del-código)
+    - [Estructura del Código Fuente](#estructura-del-código-fuente)
+    - [Convención de Namespaces](#convención-de-namespaces)
+    - [Referencia Rápida de Archivos Clave](#referencia-rápida-de-archivos-clave)
+- [Cómo Agregar un Nuevo Endpoint](#cómo-agregar-un-nuevo-endpoint)
+    - [Paso 1: Definir DTOs de Solicitud/Respuesta](#paso-1-definir-dtos-de-solicitudrespuesta)
+    - [Paso 2: Agregar la Ruta](#paso-2-agregar-la-ruta)
+    - [Paso 3: Conectar el Servicio de Aplicación](#paso-3-conectar-el-servicio-de-aplicación)
+    - [Paso 4: Agregar Validación](#paso-4-agregar-validación)
+    - [Paso 5: Registrar Dependencias](#paso-5-registrar-dependencias)
+- [Aplicación de RBAC](#aplicación-de-rbac)
+    - [Autorización por Política de Roles](#autorización-por-política-de-roles)
+    - [Verificaciones a Nivel de Endpoint](#verificaciones-a-nivel-de-endpoint)
+    - [Permisos a Nivel de Campo en Actualizaciones](#permisos-a-nivel-de-campo-en-actualizaciones)
+- [Patrón de Consumidor de Eventos](#patrón-de-consumidor-de-eventos)
+    - [Eventos Consumidos (desde Auth Service)](#eventos-consumidos-desde-auth-service)
+    - [Eventos Publicados (hacia la Plataforma)](#eventos-publicados-hacia-la-plataforma)
+    - [Escribir un Nuevo Consumidor](#escribir-un-nuevo-consumidor)
+- [Problemas Comunes](#problemas-comunes)
+- [Documentos Relacionados](#documentos-relacionados)
 
-The Users Service has a **hard runtime dependency** on the [Authentication Service](https://backstage.internal/platform/component/auth-service) (`auth-service`). It does not issue, sign, or manage tokens -- it is a **JWT-consuming service** only.
+---
+
+## Recorrido Arquitectónico
+
+### Dependencia del Authentication Service
+
+El Users Service tiene una **dependencia estricta en tiempo de ejecución** del [Authentication Service](https://backstage.internal/platform/component/auth-service) (`auth-service`). No emite, firma ni gestiona tokens -- es únicamente un **servicio consumidor de JWT**.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -48,11 +48,11 @@ The Users Service has a **hard runtime dependency** on the [Authentication Servi
 │  │  (Minimal API)│                    │  (IAuthServiceClient)    │   │
 │  └──────┬───────┘                    └───────────┬──────────────┘   │
 │         │                                        │                  │
-│         │ JWT in Authorization header              │ ValidateToken() │
+│         │ JWT en cabecera Authorization            │ ValidateToken() │
 │         ▼                                        ▼                  │
 │  ┌──────────────┐                    ┌──────────────────────────┐   │
-│  │  UserService  │                    │  JWKS Cache (5 min TTL)  │   │
-│  │  (App Layer)  │                    └──────────────────────────┘   │
+│  │  UserService  │                    │  JWKS Cache (TTL 5 min)  │   │
+│  │  (Capa App)   │                    └──────────────────────────┘   │
 │  └──────┬───────┘                                                    │
 │         │                                                            │
 │         ▼                                                            │
@@ -68,152 +68,152 @@ The Users Service has a **hard runtime dependency** on the [Authentication Servi
 │                              │
 │  ┌──────────────────────┐   │
 │  │  TokenService         │   │
-│  │  - Issuance (RS256)   │   │
-│  │  - Validation         │   │
-│  │  - Rotation           │   │
+│  │  - Emisión (RS256)    │   │
+│  │  - Validación         │   │
+│  │  - Rotación           │   │
 │  └──────────────────────┘   │
 │                              │
 │  ┌──────────────────────┐   │
 │  │  AuthService          │   │
-│  │  - Credential verify   │   │
-│  │  - Refresh flow       │   │
-│  │  - Event pub (SBus)   │   │
+│  │  - Verificación cred.  │   │
+│  │  - Flujo de refresh    │   │
+│  │  - Publicación eventos │   │
 │  └──────────────────────┘   │
 └──────────────────────────────┘
 ```
 
-**What this means for you as a developer:**
+**Lo que esto significa para ti como desarrollador:**
 
-1. **Every authenticated request carries a JWT issued by `auth-service`.** The JWT contains claims (`sub`, `roles`, `tid`, `jti`) that the Users Service extracts and trusts for authorisation.
-2. **Token validation is attempted against `auth-service` via gRPC first.** If the call fails, the service falls back to a **local JWKS cache** with a 5-minute TTL. After the cache expires and the Auth Service remains unreachable, the service returns `503 Service Unavailable` for all authenticated endpoints.
-3. **There is no "login" endpoint in this service.** Authentication is handled entirely by `auth-service`. The Users Service only manages user *profiles* (name, email, department, roles).
-4. **The service subscribes to `auth-events`** on Azure Service Bus to update user activity state (last login, last logout) without polling.
+1. **Cada solicitud autenticada lleva un JWT emitido por `auth-service`.** El JWT contiene claims (`sub`, `roles`, `tid`, `jti`) que el Users Service extrae y en los que confía para la autorización.
+2. **La validación del token se intenta primero contra `auth-service` vía gRPC.** Si la llamada falla, el servicio recurre a una **caché JWKS local** con un TTL de 5 minutos. Después de que la caché expire y el Auth Service siga inaccesible, el servicio devuelve `503 Service Unavailable` para todos los endpoints autenticados.
+3. **No existe un endpoint de "inicio de sesión" en este servicio.** La autenticación es manejada completamente por `auth-service`. El Users Service solo gestiona los *perfiles* de usuario (nombre, correo electrónico, departamento, roles).
+4. **El servicio se suscribe a `auth-events`** en Azure Service Bus para actualizar el estado de actividad del usuario (último inicio de sesión, último cierre de sesión) sin realizar sondeos.
 
-**Failure modes to understand:**
+**Modos de falla que debes comprender:**
 
-| Scenario | Effect | Mitigation |
+| Escenario | Efecto | Mitigación |
 |---|---|---|
-| Auth Service down < 5 min | Local JWKS cache serves validation | No visible impact |
-| Auth Service down > 5 min | Token validation fails; service returns 503 | PagerDuty alert; SRE failover |
-| gRPC call timeout (500 ms) | Fall back to JWKS cache | Configured in `Auth__GrpcTimeoutMs` |
-| Circuit breaker open (30 s) | All validations hit local cache | Automatic half-open probe restores gRPC |
+| Auth Service caído < 5 min | La caché JWKS local sirve la validación | Sin impacto visible |
+| Auth Service caído > 5 min | La validación del token falla; el servicio devuelve 503 | Alerta PagerDuty; failover de SRE |
+| Timeout de llamada gRPC (500 ms) | Recurso a la caché JWKS | Configurado en `Auth__GrpcTimeoutMs` |
+| Circuit breaker abierto (30 s) | Todas las validaciones usan la caché local | Sonda de semi-apertura automática restaura gRPC |
 
-### Hexagonal (Ports & Adapters) Layout
+### Distribución Hexagonal (Puertos y Adaptadores)
 
-The codebase follows the **Hexagonal Architecture** pattern:
+El código sigue el patrón de **Arquitectura Hexagonal**:
 
 ```
 src/UsersService/
-├── Models/           Domain DTOs and request/response records
-├── Services/         Application services (ports)
-│   └── IUserService  Port interface
-├── Repositories/     Data access (adapters, outbound)
-├── Endpoints/        Minimal API route definitions (adapters, inbound)
-├── Middleware/       JWT validation and authorisation middleware
-├── EventHandlers/    Service Bus message handlers
-├── Configuration/    Options classes and binding
-└── Program.cs        Composition root
+├── Models/           DTOs de dominio y registros de solicitud/respuesta
+├── Services/         Servicios de aplicación (puertos)
+│   └── IUserService  Interfaz de puerto
+├── Repositories/     Acceso a datos (adaptadores, salientes)
+├── Endpoints/        Definiciones de rutas Minimal API (adaptadores, entrantes)
+├── Middleware/       Middleware de validación JWT y autorización
+├── EventHandlers/    Manejadores de mensajes de Service Bus
+├── Configuration/    Clases de opciones y enlace
+└── Program.cs        Raíz de composición
 ```
 
-| Layer | Folder | Role |
+| Capa | Carpeta | Rol |
 |---|---|---|
-| **Domain** | `Models/` | Pure data records -- no behaviour. `UserDto`, `UserEntity`, `CreateUserRequest`, `UpdateUserRequest`. |
-| **Application (Port)** | `Services/` | Interfaces like `IUserService` define what the service does. Implementations in the same folder orchestrate the workflow. |
-| **Infrastructure (Adapter)** | `Repositories/`, `Middleware/`, `EventHandlers/` | Concrete implementations of ports. `UserRepository` talks to PostgreSQL. `AuthServiceClient` calls gRPC. |
-| **Inbound Adapter** | `Endpoints/` | ASP.NET Core Minimal API route groups that translate HTTP into application-layer calls. |
+| **Dominio** | `Models/` | Registros de datos puros -- sin comportamiento. `UserDto`, `UserEntity`, `CreateUserRequest`, `UpdateUserRequest`. |
+| **Aplicación (Puerto)** | `Services/` | Interfaces como `IUserService` definen lo que hace el servicio. Las implementaciones en la misma carpeta orquestan el flujo de trabajo. |
+| **Infraestructura (Adaptador)** | `Repositories/`, `Middleware/`, `EventHandlers/` | Implementaciones concretas de los puertos. `UserRepository` se comunica con PostgreSQL. `AuthServiceClient` llama a gRPC. |
+| **Adaptador de Entrada** | `Endpoints/` | Grupos de rutas Minimal API de ASP.NET Core que traducen HTTP a llamadas de la capa de aplicación. |
 
-### Request Lifecycle
+### Ciclo de Vida de una Solicitud
 
-A typical authenticated request flows through these layers:
+Una solicitud autenticada típica fluye a través de estas capas:
 
 ```
 HTTP Request
     │
     ▼
 ┌─────────────────────────────┐
-│ 1. JWT Authentication       │  Middleware validates JWT (gRPC or JWKS cache)
-│    Middleware                │  Extracts ClaimsPrincipal (sub, roles, tid)
+│ 1. Autenticación JWT        │  Middleware valida JWT (gRPC o caché JWKS)
+│    Middleware                │  Extrae ClaimsPrincipal (sub, roles, tid)
 └──────────┬──────────────────┘
            ▼
 ┌─────────────────────────────┐
-│ 2. Endpoint (Route Handler) │  Minimal API method (static, grouped)
-│                              │  - Deserialises request body
-│                              │  - Calls IUserService
-│                              │  - Maps result to HTTP response
+│ 2. Endpoint (Manejador Ruta)│  Método Minimal API (estático, agrupado)
+│                              │  - Deserializa el cuerpo de la solicitud
+│                              │  - Llama a IUserService
+│                              │  - Mapea el resultado a respuesta HTTP
 └──────────┬──────────────────┘
            ▼
 ┌─────────────────────────────┐
-│ 3. Application Service      │  IUserService implementation
-│                              │  - Calls ProfileValidator
-│                              │  - Calls IUserRepository
-│                              │  - Calls IEventPublisher
-│                              │  - Calls INotificationClient
+│ 3. Servicio de Aplicación    │  Implementación de IUserService
+│                              │  - Llama a ProfileValidator
+│                              │  - Llama a IUserRepository
+│                              │  - Llama a IEventPublisher
+│                              │  - Llama a INotificationClient
 └──────────┬──────────────────┘
            ▼
 ┌─────────────────────────────┐
-│ 4. Repository / Adapter     │  Dapper + Npgsql to PostgreSQL
-│                              │  - Parameterised queries
-│                              │  - tenant_id scoping
-│                              │  - Soft-delete WHERE clause
+│ 4. Repositorio / Adaptador   │  Dapper + Npgsql a PostgreSQL
+│                              │  - Consultas parametrizadas
+│                              │  - Alcance por tenant_id
+│                              │  - Cláusula WHERE de borrado lógico
 └─────────────────────────────┘
 ```
 
 ---
 
-## Code Organization
+## Organización del Código
 
-### Source Layout
+### Estructura del Código Fuente
 
 ```
 src/UsersService/
-├── Program.cs                       # Composition root, middleware pipeline, DI registration
-├── UsersService.csproj              # .NET 10 project with essential NuGet packages
-├── appsettings.json                 # Production configuration
-├── appsettings.Development.json     # Local overrides
+├── Program.cs                       # Raíz de composición, pipeline de middleware, registro DI
+├── UsersService.csproj              # Proyecto .NET 10 con paquetes NuGet esenciales
+├── appsettings.json                 # Configuración de producción
+├── appsettings.Development.json     # Sobrescrituras locales
 │
 ├── Models/
-│   ├── User.cs                      # UserDto (API response), UserEntity (DB entity), ToDto()
-│   ├── CreateUserRequest.cs         # POST request DTO
-│   └── UpdateUserRequest.cs         # PUT request DTO (all fields optional)
+│   ├── User.cs                      # UserDto (respuesta API), UserEntity (entidad BD), ToDto()
+│   ├── CreateUserRequest.cs         # DTO de solicitud POST
+│   └── UpdateUserRequest.cs         # DTO de solicitud PUT (todos los campos opcionales)
 │
 ├── Services/
-│   ├── IUserService.cs              # Port interface + UserResult<T>, PaginatedList<T>
-│   └── UserService.cs               # Application service implementation
+│   ├── IUserService.cs              # Interfaz de puerto + UserResult<T>, PaginatedList<T>
+│   └── UserService.cs               # Implementación del servicio de aplicación
 │
 ├── Middleware/
-│   ├── JwtValidationMiddleware.cs   # Validates JWT, populates HttpContext.Items
-│   ├── TenantContextMiddleware.cs   # Extracts tid, enriches scoped TenantContext
-│   └── RequestLoggingMiddleware.cs  # Correlation ID, structured logging enrichment
+│   ├── JwtValidationMiddleware.cs   # Valida JWT, popula HttpContext.Items
+│   ├── TenantContextMiddleware.cs   # Extrae tid, enriquece TenantContext con ámbito
+│   └── RequestLoggingMiddleware.cs  # ID de correlación, enriquecimiento de logging estructurado
 │
 ├── Endpoints/
-│   ├── UserEndpoints.cs             # Route group for /api/users
-│   └── HealthEndpoints.cs           # Route group for /api/health
+│   ├── UserEndpoints.cs             # Grupo de rutas para /api/users
+│   └── HealthEndpoints.cs           # Grupo de rutas para /api/health
 │
 ├── Repositories/
-│   ├── IUserRepository.cs           # Data access port
-│   └── UserRepository.cs            # Dapper implementation
+│   ├── IUserRepository.cs           # Puerto de acceso a datos
+│   └── UserRepository.cs            # Implementación con Dapper
 │
 ├── EventHandlers/
-│   ├── AuthEventConsumer.cs         # BackgroundService processing auth-events
-│   ├── IEventPublisher.cs           # Port for publishing user events
-│   └── EventPublisher.cs            # Service Bus publisher
+│   ├── AuthEventConsumer.cs         # BackgroundService que procesa auth-events
+│   ├── IEventPublisher.cs           # Puerto para publicar eventos de usuario
+│   └── EventPublisher.cs            # Publicador de Service Bus
 │
 ├── Configuration/
-│   ├── AuthOptions.cs               # Strong-typed Auth configuration
-│   ├── UsersOptions.cs              # Strong-typed Users configuration
-│   └── ServiceBusOptions.cs         # Strong-typed Service Bus configuration
+│   ├── AuthOptions.cs               # Configuración fuertemente tipada de Auth
+│   ├── UsersOptions.cs              # Configuración fuertemente tipada de Users
+│   └── ServiceBusOptions.cs         # Configuración fuertemente tipada de Service Bus
 │
 └── Observability/
-    ├── MetricsRegistry.cs           # Prometheus counters, histograms, gauges
-    ├── ActivitySources.cs           # OpenTelemetry activity sources
-    └── LogEnrichers.cs              # Serilog enrichers (tenant, correlation ID)
+    ├── MetricsRegistry.cs           # Contadores, histogramas y medidores de Prometheus
+    ├── ActivitySources.cs           # Fuentes de actividad de OpenTelemetry
+    └── LogEnrichers.cs              # Enriquecedores de Serilog (tenant, ID de correlación)
 ```
 
-### Namespace Convention
+### Convención de Namespaces
 
-All code lives under `Platform.UsersService.*`. The namespace maps directly to the folder:
+Todo el código reside bajo `Platform.UsersService.*`. El namespace se mapea directamente a la carpeta:
 
-| Folder | Namespace |
+| Carpeta | Namespace |
 |---|---|
 | `Models/` | `Platform.UsersService.Models` |
 | `Services/` | `Platform.UsersService.Services` |
@@ -221,67 +221,67 @@ All code lives under `Platform.UsersService.*`. The namespace maps directly to t
 | `Repositories/` | `Platform.UsersService.Repositories` |
 | `EventHandlers/` | `Platform.UsersService.EventHandlers` |
 
-Internal implementation classes are marked `internal sealed` -- consumers depend on interfaces, never concretions.
+Las clases de implementación internas se marcan como `internal sealed` -- los consumidores dependen de interfaces, nunca de implementaciones concretas.
 
-### Key Files Cheat Sheet
+### Referencia Rápida de Archivos Clave
 
-| File | What it contains | Why you'll touch it |
+| Archivo | Qué contiene | Por qué lo tocarás |
 |---|---|---|
-| `Program.cs` | Service registration, middleware pipeline, endpoint mounting | Adding a new dependency or middleware |
-| `Models/CreateUserRequest.cs` | `CreateUserRequest` record | Extending the user creation schema |
-| `Models/UpdateUserRequest.cs` | `UpdateUserRequest` record (all optional) | Adding editable fields |
-| `Models/User.cs` | `UserDto` and `UserEntity` records | Changing the API response shape or DB columns |
-| `Services/IUserService.cs` | Port interface, `UserResult<T>`, `PaginatedList<T>` | Adding a new operation |
-| `Services/UserService.cs` | Application logic orchestrator | Implementing new business rules |
-| `Middleware/JwtValidationMiddleware.cs` | JWT validation with gRPC + JWKS fallback | Changing auth behaviour |
-| `Endpoints/UserEndpoints.cs` | Route group for `/api/users` | Adding a new endpoint to the users API |
-| `Endpoints/HealthEndpoints.cs` | Liveness + readiness probes | Adding a dependency check |
-| `Repositories/UserRepository.cs` | Dapper SQL for all user queries | Writing new queries or changing schema |
-| `EventHandlers/AuthEventConsumer.cs` | Service Bus subscription processor | Adding a new consumed event |
-| `EventHandlers/EventPublisher.cs` | Publishing user lifecycle events | Adding a new published event |
-| `appsettings.json` | Environment-agnostic defaults | Changing cache TTLs, page sizes |
-| `appsettings.Development.json` | Local development overrides | Configuring local PostgreSQL |
+| `Program.cs` | Registro de servicios, pipeline de middleware, montaje de endpoints | Agregar una nueva dependencia o middleware |
+| `Models/CreateUserRequest.cs` | Registro `CreateUserRequest` | Extender el esquema de creación de usuarios |
+| `Models/UpdateUserRequest.cs` | Registro `UpdateUserRequest` (todo opcional) | Agregar campos editables |
+| `Models/User.cs` | Registros `UserDto` y `UserEntity` | Cambiar la forma de la respuesta API o columnas de BD |
+| `Services/IUserService.cs` | Interfaz de puerto, `UserResult<T>`, `PaginatedList<T>` | Agregar una nueva operación |
+| `Services/UserService.cs` | Orquestador de lógica de aplicación | Implementar nuevas reglas de negocio |
+| `Middleware/JwtValidationMiddleware.cs` | Validación JWT con respaldo gRPC + JWKS | Cambiar el comportamiento de autenticación |
+| `Endpoints/UserEndpoints.cs` | Grupo de rutas para `/api/users` | Agregar un nuevo endpoint a la API de usuarios |
+| `Endpoints/HealthEndpoints.cs` | Sondeos de liveness + readiness | Agregar una verificación de dependencia |
+| `Repositories/UserRepository.cs` | SQL con Dapper para todas las consultas de usuarios | Escribir nuevas consultas o cambiar el esquema |
+| `EventHandlers/AuthEventConsumer.cs` | Procesador de suscripción a Service Bus | Agregar un nuevo evento consumido |
+| `EventHandlers/EventPublisher.cs` | Publicación de eventos del ciclo de vida del usuario | Agregar un nuevo evento publicado |
+| `appsettings.json` | Valores predeterminados independientes del entorno | Cambiar TTL de caché, tamaños de página |
+| `appsettings.Development.json` | Sobrescrituras para desarrollo local | Configurar PostgreSQL local |
 
 ---
 
-## How to Add a New Endpoint
+## Cómo Agregar un Nuevo Endpoint
 
-This walkthrough adds a `PATCH /api/users/{userId}/status` endpoint that allows an admin to activate or deactivate a user account. The pattern applies to any new operation.
+Este tutorial agrega un endpoint `PATCH /api/users/{userId}/status` que permite a un administrador activar o desactivar una cuenta de usuario. El patrón aplica a cualquier operación nueva.
 
-### Step 1: Define Request / Response DTOs
+### Paso 1: Definir DTOs de Solicitud/Respuesta
 
-File: `src/UsersService/Models/UpdateUserStatusRequest.cs`
+Archivo: `src/UsersService/Models/UpdateUserStatusRequest.cs`
 
 ```csharp
 namespace Platform.UsersService.Models;
 
 /// <summary>
-/// Request to change a user's account status.
+/// Solicitud para cambiar el estado de la cuenta de un usuario.
 /// </summary>
 public sealed record UpdateUserStatusRequest
 {
-    /// <summary>New account status. Valid values: "active", "inactive".</summary>
+    /// <summary>Nuevo estado de la cuenta. Valores válidos: "active", "inactive".</summary>
     public required string Status { get; init; }
 }
 ```
 
-Add the status field to `UserDto` and `UserEntity` in `Models/User.cs`:
+Agrega el campo de estado a `UserDto` y `UserEntity` en `Models/User.cs`:
 
 ```csharp
-// In UserDto
+// En UserDto
 public string Status { get; init; } = "active";
 
-// In UserEntity
+// En UserEntity
 public string Status { get; init; } = "active";
 ```
 
-Update `ToDto()` in `UserEntity` to carry the status field.
+Actualiza `ToDto()` en `UserEntity` para que incluya el campo de estado.
 
-### Step 2: Add the Route
+### Paso 2: Agregar la Ruta
 
-File: `src/UsersService/Endpoints/UserEndpoints.cs`
+Archivo: `src/UsersService/Endpoints/UserEndpoints.cs`
 
-Add a static method inside the existing `UserEndpoints` class and register it in the route group:
+Agrega un método estático dentro de la clase existente `UserEndpoints` y regístralo en el grupo de rutas:
 
 ```csharp
 public static class UserEndpoints
@@ -293,17 +293,17 @@ public static class UserEndpoints
             .WithOpenApi()
             .RequireAuthorization();
 
-        // Existing routes...
+        // Rutas existentes...
         group.MapGet("/", GetUsersAsync);
         group.MapGet("/{userId:guid}", GetUserByIdAsync);
         group.MapPost("/", CreateUserAsync);
         group.MapPut("/{userId:guid}", UpdateUserAsync);
         group.MapDelete("/{userId:guid}", DeleteUserAsync);
 
-        // NEW ROUTE
+        // NUEVA RUTA
         group.MapPatch("/{userId:guid}/status", UpdateUserStatusAsync)
             .WithName("UpdateUserStatus")
-            .WithDescription("Activates or deactivates a user account. Admin only.")
+            .WithDescription("Activa o desactiva una cuenta de usuario. Solo administradores.")
             .Produces<UserDto>(200)
             .Produces<ProblemDetails>(400)
             .Produces<ProblemDetails>(403)
@@ -319,7 +319,7 @@ public static class UserEndpoints
         HttpContext httpContext,
         CancellationToken ct)
     {
-        // RBAC enforcement happens inside UserService via the claims principal
+        // La aplicación de RBAC ocurre dentro de UserService vía el claims principal
         var result = await userService.UpdateUserStatusAsync(
             userId,
             request.Status,
@@ -337,52 +337,52 @@ public static class UserEndpoints
 }
 ```
 
-Mount the endpoint group in `Program.cs` -- if the group is already called (e.g., `app.MapUserEndpoints()`), the new route is automatically included.
+Monta el grupo de endpoints en `Program.cs` -- si el grupo ya está siendo llamado (ej., `app.MapUserEndpoints()`), la nueva ruta se incluye automáticamente.
 
-### Step 3: Wire the Application Service
+### Paso 3: Conectar el Servicio de Aplicación
 
-Add the method to `IUserService`:
+Agrega el método a `IUserService`:
 
 ```csharp
 Task<UserResult<UserDto>> UpdateUserStatusAsync(
     Guid userId, string newStatus, ClaimsPrincipal principal, CancellationToken ct);
 ```
 
-Implement it in `UserService`:
+Impleméntalo en `UserService`:
 
 ```csharp
 public async Task<UserResult<UserDto>> UpdateUserStatusAsync(
     Guid userId, string newStatus, ClaimsPrincipal principal, CancellationToken ct)
 {
-    // 1. RBAC -- only admin can change status
+    // 1. RBAC -- solo admin puede cambiar el estado
     var roles = principal.FindAll("roles").Select(c => c.Value).ToArray();
     if (!roles.Contains("admin"))
     {
-        return UserResult<UserDto>.Failure("Admin role is required to change account status.", 403);
+        return UserResult<UserDto>.Failure("Se requiere rol de administrador para cambiar el estado de la cuenta.", 403);
     }
 
-    // 2. Validate status value
+    // 2. Validar el valor del estado
     if (newStatus != "active" && newStatus != "inactive")
     {
-        return UserResult<UserDto>.Failure("Status must be 'active' or 'inactive'.", 400);
+        return UserResult<UserDto>.Failure("El estado debe ser 'active' o 'inactive'.", 400);
     }
 
-    // 3. Extract tenant ID from JWT (never from user input)
+    // 3. Extraer ID del tenant del JWT (nunca de la entrada del usuario)
     var tenantId = Guid.Parse(principal.FindFirstValue("tid")!);
     var actorId = Guid.Parse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
 
-    // 4. Load the user (includes tenant scoping)
+    // 4. Cargar el usuario (incluye el alcance del tenant)
     var existing = await _userRepository.GetUserByIdAsync(userId, tenantId, ct);
     if (existing is null)
     {
-        return UserResult<UserDto>.Failure("User not found.", 404);
+        return UserResult<UserDto>.Failure("Usuario no encontrado.", 404);
     }
 
-    // 5. Apply the update
+    // 5. Aplicar la actualización
     var updated = existing with { Status = newStatus, UpdatedAt = DateTimeOffset.UtcNow };
     await _userRepository.UpdateUserAsync(updated, ct);
 
-    // 6. Audit log
+    // 6. Registro de auditoría
     await _userRepository.InsertAuditLogAsync(new AuditLogEntry
     {
         UserId = userId, Action = "status_changed",
@@ -390,18 +390,18 @@ public async Task<UserResult<UserDto>> UpdateUserStatusAsync(
         ActorId = actorId, PerformedAt = DateTimeOffset.UtcNow
     }, ct);
 
-    // 7. Publish event
+    // 7. Publicar evento
     await _eventPublisher.PublishAsync(new UserStatusChanged(userId, newStatus, tenantId, actorId), ct);
 
-    _logger.LogInformation("User {UserId} status changed to {NewStatus} by {ActorId}", userId, newStatus, actorId);
+    _logger.LogInformation("El estado del usuario {UserId} cambió a {NewStatus} por {ActorId}", userId, newStatus, actorId);
 
     return UserResult<UserDto>.Success(updated.ToDto());
 }
 ```
 
-### Step 4: Add Validation
+### Paso 4: Agregar Validación
 
-The endpoint above validates `Status` as an allowed value. For more complex validation, register a `FluentValidation` validator:
+El endpoint anterior valida que `Status` sea un valor permitido. Para validaciones más complejas, registra un validador de `FluentValidation`:
 
 ```csharp
 public class UpdateUserStatusValidator : AbstractValidator<UpdateUserStatusRequest>
@@ -411,23 +411,23 @@ public class UpdateUserStatusValidator : AbstractValidator<UpdateUserStatusReque
         RuleFor(x => x.Status)
             .NotEmpty()
             .Must(s => s is "active" or "inactive")
-            .WithMessage("Status must be 'active' or 'inactive'.");
+            .WithMessage("El estado debe ser 'active' o 'inactive'.");
     }
 }
 ```
 
-Register it in `Program.cs`:
+Regístralo en `Program.cs`:
 
 ```csharp
 builder.Services.AddValidatorsFromAssemblyContaining<UpdateUserStatusValidator>();
 ```
 
-### Step 5: Register Dependencies
+### Paso 5: Registrar Dependencias
 
-If your endpoint needs a new external dependency (e.g., a gRPC client to another service), register it in `Program.cs`:
+Si tu endpoint necesita una nueva dependencia externa (ej., un cliente gRPC para otro servicio), regístrala en `Program.cs`:
 
 ```csharp
-// Example: new gRPC client
+// Ejemplo: nuevo cliente gRPC
 builder.Services.AddGrpcClient<SomeService.SomeServiceClient>(o =>
 {
     o.Address = new Uri(builder.Configuration["SomeService:Endpoint"]!);
@@ -436,13 +436,13 @@ builder.Services.AddGrpcClient<SomeService.SomeServiceClient>(o =>
 
 ---
 
-## RBAC Enforcement
+## Aplicación de RBAC
 
-The Users Service uses a **two-layer** authorisation model:
+El Users Service utiliza un modelo de autorización de **dos capas**:
 
-### Role Policy Authorisation
+### Autorización por Política de Roles
 
-ASP.NET Core [authorisation policies](https://learn.microsoft.com/en-us/aspnet/core/security/authorization/policies) map JWT roles to endpoint access. Policy registration in `Program.cs`:
+Las [políticas de autorización](https://learn.microsoft.com/en-us/aspnet/core/security/authorization/policies) de ASP.NET Core mapean los roles del JWT al acceso a endpoints. Registro de políticas en `Program.cs`:
 
 ```csharp
 builder.Services.AddAuthorizationBuilder()
@@ -453,16 +453,16 @@ builder.Services.AddAuthorizationBuilder()
             ctx.User.IsInRole("admin") || ctx.User.IsInRole("operator")));
 ```
 
-Apply policies to route groups:
+Aplica políticas a grupos de rutas:
 
 ```csharp
 group.MapPost("/", CreateUserAsync).RequireAuthorization("AdminOnly");
 group.MapGet("/", GetUsersAsync).RequireAuthorization("AdminOrOperator");
 ```
 
-### Endpoint-Level Checks
+### Verificaciones a Nivel de Endpoint
 
-For finer-grained rules (e.g., "user can read self"), the application layer inspects the `ClaimsPrincipal` directly:
+Para reglas más detalladas (ej., "el usuario puede leerse a sí mismo"), la capa de aplicación inspecciona directamente el `ClaimsPrincipal`:
 
 ```csharp
 public async Task<UserResult<UserDto>> GetUserByIdAsync(
@@ -476,16 +476,16 @@ public async Task<UserResult<UserDto>> GetUserByIdAsync(
 
     if (!isAdmin && !isOperator && !isSelf)
     {
-        return UserResult<UserDto>.Failure("Access denied.", 403);
+        return UserResult<UserDto>.Failure("Acceso denegado.", 403);
     }
 
-    // ... proceed with tenant-scoped query
+    // ... continuar con consulta con alcance de tenant
 }
 ```
 
-### Field-Level Permissions on Update
+### Permisos a Nivel de Campo en Actualizaciones
 
-The `PUT /api/users/{id}` endpoint has field-level rules depending on the caller's role. These are enforced inside the application service, not at the endpoint level:
+El endpoint `PUT /api/users/{id}` tiene reglas a nivel de campo dependiendo del rol del solicitante. Estas se aplican dentro del servicio de aplicación, no a nivel de endpoint:
 
 ```csharp
 public async Task<UserResult<UserDto>> UpdateUserAsync(
@@ -496,13 +496,13 @@ public async Task<UserResult<UserDto>> UpdateUserAsync(
     var isSelf = userId == GetUserId(principal);
 
     if (!isAdmin && !isOperator && !isSelf)
-        return UserResult<UserDto>.Failure("Access denied.", 403);
+        return UserResult<UserDto>.Failure("Acceso denegado.", 403);
 
     var existing = await _userRepository.GetUserByIdAsync(userId, tenantId, ct);
     if (existing is null)
-        return UserResult<UserDto>.Failure("User not found.", 404);
+        return UserResult<UserDto>.Failure("Usuario no encontrado.", 404);
 
-    // Build update selectively based on role
+    // Construir actualización de forma selectiva según el rol
     var updated = existing with
     {
         Email = request.Email ?? existing.Email,
@@ -510,21 +510,21 @@ public async Task<UserResult<UserDto>> UpdateUserAsync(
         UpdatedAt = DateTimeOffset.UtcNow
     };
 
-    // Only admin can change roles
+    // Solo administrador puede cambiar roles
     if (request.Roles is not null)
     {
         if (!isAdmin)
-            return UserResult<UserDto>.Failure("Only admins can change roles.", 403);
+            return UserResult<UserDto>.Failure("Solo los administradores pueden cambiar roles.", 403);
         updated = updated with { Roles = request.Roles };
     }
 
-    // Operator and self cannot change department or job title
+    // El operador y el propio usuario no pueden cambiar departamento ni título
     if (!isAdmin && request.Department is not null)
-        return UserResult<UserDto>.Failure("Only admins can change department.", 403);
+        return UserResult<UserDto>.Failure("Solo los administradores pueden cambiar el departamento.", 403);
     if (!isAdmin && request.JobTitle is not null)
-        return UserResult<UserDto>.Failure("Only admins can change job title.", 403);
+        return UserResult<UserDto>.Failure("Solo los administradores pueden cambiar el título del puesto.", 403);
 
-    // Apply admin-only fields
+    // Aplicar campos solo de administrador
     if (isAdmin)
     {
         updated = updated with
@@ -539,43 +539,43 @@ public async Task<UserResult<UserDto>> UpdateUserAsync(
 }
 ```
 
-**RBAC Matrix (reproduced from [Component View](architecture/components.md)):**
+**Matriz RBAC (reproducida de [Vista de Componentes](architecture/components.md)):**
 
-| Action | `admin` | `operator` | `user` |
+| Acción | `admin` | `operator` | `user` |
 |---|---|---|---|
-| `GET /api/users` | All | All | -- |
-| `GET /api/users/{id}` | Any | Any | Self only |
-| `POST /api/users` | Create | -- | -- |
-| `PUT /api/users/{id}` | Any (all fields) | Limited fields | Self (limited) |
-| `DELETE /api/users/{id}` | Delete | -- | -- |
+| `GET /api/users` | Todos | Todos | -- |
+| `GET /api/users/{id}` | Cualquiera | Cualquiera | Solo propio |
+| `POST /api/users` | Crear | -- | -- |
+| `PUT /api/users/{id}` | Cualquiera (todos los campos) | Campos limitados | Propio (limitado) |
+| `DELETE /api/users/{id}` | Eliminar | -- | -- |
 
 ---
 
-## Event Consumer Pattern
+## Patrón de Consumidor de Eventos
 
-The service runs a `BackgroundService` that subscribes to the `auth-events` Azure Service Bus topic. This is how the Users Service stays informed about authentication activity without polling the Auth Service.
+El servicio ejecuta un `BackgroundService` que se suscribe al tópico `auth-events` de Azure Service Bus. Así es como el Users Service se mantiene informado sobre la actividad de autenticación sin consultar al Auth Service.
 
-### Consumed Events (from Auth Service)
+### Eventos Consumidos (desde Auth Service)
 
-| Event | Action | Idempotency |
+| Evento | Acción | Idempotencia |
 |---|---|---|
-| `user.login` | `UPDATE users SET last_login_at = @timestamp WHERE id = @userId` | `eventId` dedup |
-| `user.logout` | `UPDATE users SET last_logout_at = @timestamp WHERE id = @userId` | `eventId` dedup |
-| `token.revoked` | `INSERT INTO token_revocations (user_id, event_id, revoked_at)` | `eventId` dedup |
+| `user.login` | `UPDATE users SET last_login_at = @timestamp WHERE id = @userId` | Dedup por `eventId` |
+| `user.logout` | `UPDATE users SET last_logout_at = @timestamp WHERE id = @userId` | Dedup por `eventId` |
+| `token.revoked` | `INSERT INTO token_revocations (user_id, event_id, revoked_at)` | Dedup por `eventId` |
 
-### Published Events (to the Platform)
+### Eventos Publicados (hacia la Plataforma)
 
-| Event | Trigger | Payload |
+| Evento | Disparador | Carga útil |
 |---|---|---|
-| `user.created` | `POST /api/users` success | `{ userId, username, email, tenantId, actorId }` |
-| `user.updated` | `PUT /api/users/{id}` success | `{ userId, changedFields[], actorId }` |
-| `user.deleted` | `DELETE /api/users/{id}` success | `{ userId, actorId }` |
+| `user.created` | Éxito de `POST /api/users` | `{ userId, username, email, tenantId, actorId }` |
+| `user.updated` | Éxito de `PUT /api/users/{id}` | `{ userId, changedFields[], actorId }` |
+| `user.deleted` | Éxito de `DELETE /api/users/{id}` | `{ userId, actorId }` |
 
-### Writing a New Consumer
+### Escribir un Nuevo Consumidor
 
-To consume a new event type from the `auth-events` topic:
+Para consumir un nuevo tipo de evento del tópico `auth-events`:
 
-**1. Add the handler in `AuthEventConsumer.cs`:**
+**1. Agrega el manejador en `AuthEventConsumer.cs`:**
 
 ```csharp
 private async Task HandleUserLoginAsync(ProcessMessageEventArgs args, CancellationToken ct)
@@ -586,7 +586,7 @@ private async Task HandleUserLoginAsync(ProcessMessageEventArgs args, Cancellati
     var envelope = JsonSerializer.Deserialize<EventEnvelope<LoginEventData>>(body);
     if (envelope is null) { await args.DeadLetterMessageAsync(args.Message); return; }
 
-    // Deduplication
+    // Deduplicación
     if (await _eventDeduplication.IsProcessedAsync(envelope.EventId, ct))
     {
         await args.CompleteMessageAsync(args.Message);
@@ -597,13 +597,13 @@ private async Task HandleUserLoginAsync(ProcessMessageEventArgs args, Cancellati
     await _eventDeduplication.MarkProcessedAsync(envelope.EventId, ct);
 
     _metrics.EventProcessed("user.login", "success");
-    _logger.LogInformation("Processed user.login for {UserId}", envelope.Data.UserId);
+    _logger.LogInformation("Procesado user.login para {UserId}", envelope.Data.UserId);
 
     await args.CompleteMessageAsync(args.Message);
 }
 ```
 
-**2. Register the handler in the message dispatch map (inside `AuthEventConsumer`):**
+**2. Registra el manejador en el mapa de despacho de mensajes (dentro de `AuthEventConsumer`):**
 
 ```csharp
 private static readonly Dictionary<string, Func<ProcessMessageEventArgs, CancellationToken, Task>> Handlers = new()
@@ -614,56 +614,56 @@ private static readonly Dictionary<string, Func<ProcessMessageEventArgs, Cancell
 };
 ```
 
-**3. Add a deduplication check** -- the `event_deduplication` table prevents double-processing when Service Bus delivers the same message more than once (at-least-once guarantee).
+**3. Agrega una verificación de deduplicación** -- la tabla `event_deduplication` evita el doble procesamiento cuando Service Bus entrega el mismo mensaje más de una vez (garantía de al menos una vez).
 
-**Processing guarantees:**
+**Garantías de procesamiento:**
 
-| Guarantee | Mechanism |
+| Garantía | Mecanismo |
 |---|---|
-| At-least-once | Service Bus PeekLock + auto-renew (max 5 min) |
-| In-order per user | Session-enabled topic (session ID = `userId`) |
-| Idempotency | `event_deduplication(event_id PK)` table |
-| Dead-letter | After 10 delivery failures |
+| Al menos una vez | Service Bus PeekLock + renovación automática (máx. 5 min) |
+| En orden por usuario | Tópico habilitado para sesiones (ID de sesión = `userId`) |
+| Idempotencia | Tabla `event_deduplication(event_id PK)` |
+| Mensajes fallidos | Después de 10 fallos de entrega |
 
 ---
 
-## Common Pitfalls
+## Problemas Comunes
 
-### 1. Forgetting Tenant ID Scoping
+### 1. Olvidar el Alcance del ID de Tenant
 
-Every query **must** include `tenant_id`. The tenant ID comes from the JWT (`tid` claim), never from user input. Violation = CROSS-TENANT DATA LEAKAGE (severity: critical).
+Cada consulta **debe** incluir `tenant_id`. El ID del tenant proviene del JWT (claim `tid`), nunca de la entrada del usuario. Violación = FUGA DE DATOS ENTRE TENANTS (severidad: crítica).
 
 ```csharp
-// WRONG -- attacker can pass any tenant
+// INCORRECTO -- un atacante puede pasar cualquier tenant
 SELECT * FROM users WHERE id = @userId;
 
-// RIGHT
+// CORRECTO
 SELECT * FROM users WHERE id = @userId AND tenant_id = @tenantId;
 ```
 
-### 2. Exposing Internal Entity Types to the API
+### 2. Exponer Tipos de Entidad Internos a la API
 
-`UserEntity` contains database-internal fields (`DeletedAt`, `TenantId`) that must never be serialised to API responses. Always map to `UserDto` via `ToDto()`.
+`UserEntity` contiene campos internos de la base de datos (`DeletedAt`, `TenantId`) que nunca deben serializarse en las respuestas de la API. Siempre mapea a `UserDto` mediante `ToDto()`.
 
 ```csharp
-// WRONG -- exposes DeletedAt to API consumers
+// INCORRECTO -- expone DeletedAt a los consumidores de la API
 return Results.Ok(userEntity);
 
-// RIGHT
+// CORRECTO
 return Results.Ok(userEntity.ToDto());
 ```
 
-### 3. Skipping Idempotency for Event Handlers
+### 3. Omitir la Idempotencia en los Manejadores de Eventos
 
-Service Bus guarantees at-least-once delivery. Without deduplication, the same `user.login` event could update `last_login_at` twice with the same value (harmless but wasteful) -- or worse, process a `user.deleted` event twice and fail on the second attempt. Always check the `event_deduplication` table first.
+Service Bus garantiza la entrega al menos una vez. Sin deduplicación, el mismo evento `user.login` podría actualizar `last_login_at` dos veces con el mismo valor (inofensivo pero derrochador) -- o peor, procesar un evento `user.deleted` dos veces y fallar en el segundo intento. Siempre verifica primero la tabla `event_deduplication`.
 
-### 4. Using the Wrong HTTP Method for Partial Updates
+### 4. Usar el Método HTTP Incorrecto para Actualizaciones Parciales
 
-Use `PATCH` for partial updates, not `POST` or overloaded `PUT`. The existing `PUT /api/users/{id}` already supports partial updates via optional fields, but new endpoints that modify a subset of fields should prefer `PATCH`.
+Usa `PATCH` para actualizaciones parciales, no `POST` ni `PUT` sobrecargado. El `PUT /api/users/{id}` existente ya soporta actualizaciones parciales mediante campos opcionales, pero los nuevos endpoints que modifiquen un subconjunto de campos deben preferir `PATCH`.
 
-### 5. Not Propagating the Correlation ID
+### 5. No Propagar el ID de Correlación
 
-Every request carries a `trace-id` header from the API Gateway. If you make outbound calls (gRPC to Auth Service, HTTP to Graph API), propagate this ID so the distributed trace is complete:
+Cada solicitud lleva una cabecera `trace-id` desde la API Gateway. Si realizas llamadas salientes (gRPC al Auth Service, HTTP a Graph API), propaga este ID para que el rastro distribuido esté completo:
 
 ```csharp
 using var activity = _activitySource.StartActivity("UserService.CreateUser");
@@ -671,65 +671,65 @@ activity?.SetTag("user.id", userId.ToString());
 activity?.SetTag("tenant.id", tenantId.ToString());
 ```
 
-### 6. Bypassing the Application Layer
+### 6. Omitir la Capa de Aplicación
 
-Endpoints must call `IUserService` -- they should never call `IUserRepository` directly. The application layer is where RBAC, validation, audit logging, and event publishing happen. Skipping it means skipping security controls.
+Los endpoints deben llamar a `IUserService` -- nunca deben llamar a `IUserRepository` directamente. La capa de aplicación es donde ocurren RBAC, validación, registro de auditoría y publicación de eventos. Omitirla significa omitir los controles de seguridad.
 
 ```csharp
-// WRONG -- bypasses RBAC and audit
+// INCORRECTO -- omite RBAC y auditoría
 group.MapPost("/", async (Guid id, IUserRepository repo) => { ... });
 
-// RIGHT
+// CORRECTO
 group.MapPost("/", async (Guid id, IUserService svc) => { ... });
 ```
 
-### 7. Using `is null` Checks on Optional Fields in `UpdateUserRequest`
+### 7. Usar Verificaciones `is null` en Campos Opcionales de `UpdateUserRequest`
 
-`UpdateUserRequest` uses nullable fields to distinguish "not provided" from "set to null". A `string?` field that is `null` means "do not update this field". This breaks if the client explicitly wants to clear a value:
+`UpdateUserRequest` usa campos anulables para distinguir "no proporcionado" de "establecido como nulo". Un campo `string?` que es `null` significa "no actualices este campo". Esto se rompe si el cliente quiere explícitamente limpiar un valor:
 
 ```csharp
-// This cannot distinguish "don't change department" from "clear department".
-// Solution: use a discriminated union or a separate ClearFields list.
+// Esto no puede distinguir "no cambiar departamento" de "limpiar departamento".
+// Solución: usar una unión discriminada o una lista separada de campos a limpiar.
 ```
 
-Current convention: if a field is `null` in `UpdateUserRequest`, it is not updated. Clearing a field is not supported for most fields. If you add a clearable field, add a separate boolean or use `JsonIgnoreCondition.WhenWritingNull` on the client.
+Convención actual: si un campo es `null` en `UpdateUserRequest`, no se actualiza. La mayoría de los campos no soportan la limpieza de valores. Si agregas un campo que se pueda limpiar, agrega un booleano separado o usa `JsonIgnoreCondition.WhenWritingNull` en el cliente.
 
-### 8. Hard-Coded Configuration Values
+### 8. Valores de Configuración Hardcodeados
 
-Never hard-code connection strings, endpoint URLs, or timeouts. Every environment-specific value belongs in `appsettings.json`, `appsettings.{Environment}.json`, or Azure Key Vault.
+Nunca hardcodees cadenas de conexión, URLs de endpoints o timeouts. Cada valor específico del entorno pertenece a `appsettings.json`, `appsettings.{Environment}.json` o Azure Key Vault.
 
 ```csharp
-// WRONG
+// INCORRECTO
 var timeout = TimeSpan.FromMilliseconds(500);
 
-// RIGHT
+// CORRECTO
 var timeoutMs = configuration.GetValue<int>("Auth:GrpcTimeoutMs", 500);
 var timeout = TimeSpan.FromMilliseconds(timeoutMs);
 ```
 
-### 9. Ignoring the Circuit Breaker on Auth Service gRPC Calls
+### 9. Ignorar el Circuit Breaker en Llamadas gRPC al Auth Service
 
-The `AuthServiceClient` has a circuit breaker configured at 5 consecutive failures with a 30-second open duration. If you bypass this client and call the Auth Service directly, you lose circuit protection and could cascade failures under load.
+El `AuthServiceClient` tiene un circuit breaker configurado con 5 fallos consecutivos y una duración de apertura de 30 segundos. Si omites este cliente y llamas al Auth Service directamente, pierdes la protección del circuito y podrías causar fallos en cascada bajo carga.
 
-### 10. Adding Endpoints That Require Authentication but Forgetting `RequireAuthorization()`
+### 10. Agregar Endpoints Que Requieran Autenticación pero Olvidar `RequireAuthorization()`
 
-New route handlers added to a group that already has `.RequireAuthorization()` inherit the requirement. However, if you create a new route group (e.g., a new admin console), remember to call `.RequireAuthorization()` on it, or your endpoint will be publicly accessible.
+Los nuevos manejadores de ruta agregados a un grupo que ya tiene `.RequireAuthorization()` heredan el requisito. Sin embargo, si creas un nuevo grupo de rutas (ej., una nueva consola de administración), recuerda llamar a `.RequireAuthorization()` en él, o tu endpoint será accesible públicamente.
 
 ---
 
-## Related Documents
+## Documentos Relacionados
 
-- [Architecture Overview](architecture/overview.md) -- system design and principles
-- [System Context](architecture/context.md) -- external system interactions
-- [Component View](architecture/components.md) -- internal component structure
-- [Security Architecture](architecture/security.md) -- JWT validation and RBAC model
-- [Container View](architecture/containers.md) -- runtime containers and data stores
-- [Users API](api/users-api.md) -- full endpoint reference
-- [Events](api/events.md) -- consumed and published event schemas
-- [Variables & Configuration](api/variables.md) -- environment variables and feature flags
-- [Local Development](onboarding/local-development.md) -- setting up the development environment
-- [How to Debug](onboarding/how-to-debug.md) -- debugging techniques
-- [Testing](onboarding/testing.md) -- testing strategy
-- [Coding Standards](decisions/coding-standards.md) -- code conventions
-- [ADR-002 -- JWT Validation at Gateway vs. Service Level](adr/ADR-002.md)
-- [ADR-003 -- Event-Driven User State Synchronization](adr/ADR-003.md)
+- [Visión General de la Arquitectura](architecture/overview.md) -- diseño y principios del sistema
+- [Contexto del Sistema](architecture/context.md) -- interacciones con sistemas externos
+- [Vista de Componentes](architecture/components.md) -- estructura interna de componentes
+- [Arquitectura de Seguridad](architecture/security.md) -- validación JWT y modelo RBAC
+- [Vista de Contenedores](architecture/containers.md) -- contenedores en tiempo de ejecución y almacenes de datos
+- [API de Usuarios](api/users-api.md) -- referencia completa de endpoints
+- [Eventos](api/events.md) -- esquemas de eventos consumidos y publicados
+- [Variables y Configuración](api/variables.md) -- variables de entorno y flags de funcionalidad
+- [Desarrollo Local](onboarding/local-development.md) -- configuración del entorno de desarrollo
+- [Cómo Depurar](onboarding/how-to-debug.md) -- técnicas de depuración
+- [Pruebas](onboarding/testing.md) -- estrategia de pruebas
+- [Estándares de Codificación](decisions/coding-standards.md) -- convenciones de código
+- [ADR-002 -- Validación JWT a Nivel de Puerta de Enlace vs. Servicio](adr/ADR-002.md)
+- [ADR-003 -- Sincronización del Estado del Usuario Impulsada por Eventos](adr/ADR-003.md)

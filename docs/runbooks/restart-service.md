@@ -1,208 +1,208 @@
-# Restart Service -- Users Service
+# Reinicio del Servicio -- Users Service
 
-**Document Owner:** Platform SRE Team
-**Classification:** Internal / Operations
-**Primary Audience:** On-Call SRE, Platform Engineering
-
----
-
-## Table of Contents
-
-1. [Objective](#objective)
-2. [When to Use This Runbook](#when-to-use-this-runbook)
-3. [Prerequisites](#prerequisites)
-4. [Pre-Restart Checklist](#pre-restart-checklist)
-5. [Restart Procedure](#restart-procedure)
-    - [Rolling Pod Restart (Standard)](#rolling-pod-restart-standard)
-    - [Single Pod Restart (Targeted)](#single-pod-restart-targeted)
-6. [Graceful Shutdown Details](#graceful-shutdown-details)
-7. [Verification During Restart](#verification-during-restart)
-8. [Post-Restart Validation](#post-restart-validation)
-9. [Rollback: If the Restart Fails](#rollback-if-the-restart-fails)
-10. [Post-Incident Actions](#post-incident-actions)
+**Propietario del documento:** Equipo SRE de Plataforma
+**Clasificacion:** Interno / Operaciones
+**Audiencia principal:** SRE de guardia, Ingenieria de Plataforma
 
 ---
 
-## Objective
+## Tabla de Contenidos
 
-Safely restart the Users Service with zero or minimal impact to platform users. The procedure ensures in-flight requests complete, queued events are drained, and connectivity to the Auth Service -- the service's critical dependency -- is re-established before the new instance serves traffic.
+1. [Objetivo](#objetivo)
+2. [Cundo usar este runbook](#cuando-usar-este-runbook)
+3. [Requisitos previos](#requisitos-previos)
+4. [Lista de verificacion previa al reinicio](#lista-de-verificacion-previa-al-reinicio)
+5. [Procedimiento de reinicio](#procedimiento-de-reinicio)
+    - [Reinicio gradual de pods (Estandar)](#reinicio-gradual-de-pods-estandar)
+    - [Reinicio de un solo pod (Dirigido)](#reinicio-de-un-solo-pod-dirigido)
+6. [Detalles del apagado gradual](#detalles-del-apagado-gradual)
+7. [Verificacion durante el reinicio](#verificacion-durante-el-reinicio)
+8. [Validacion posterior al reinicio](#validacion-posterior-al-reinicio)
+9. [Revertir: Si el reinicio falla](#revertir-si-el-reinicio-falla)
+10. [Acciones posteriores al incidente](#acciones-posteriores-al-incidente)
 
 ---
 
-## When to Use This Runbook
+## Objetivo
 
-| Scenario | Restart Type | Urgency |
+Reiniciar de forma segura el Users Service con impacto cero o minimo para los usuarios de la plataforma. El procedimiento asegura que las solicitudes en curso se completen, los eventos en cola se drenen y la conectividad con el Auth Service -- la dependencia critica del servicio -- se restablezca antes de que la nueva instancia atienda trafico.
+
+---
+
+## Cuando usar este runbook
+
+| Escenario | Tipo de reinicio | Urgencia |
 |---|---|---|
-| Deploying a new release | Rolling pod restart | Planned (change window) |
-| Applying configuration changes | Rolling pod restart | Planned (change window) |
-| Pod stuck on CrashLoopBackOff | Single pod restart | Unplanned (investigate first) |
-| Memory/CPU leak observed | Single pod restart (targeted) | Unplanned |
-| Certificate rotation (gRPC mTLS) | Rolling pod restart | Planned (maintenance window) |
-| After secrets rotation in Key Vault | Rolling pod restart | Planned |
+| Despliegue de una nueva version | Reinicio gradual de pods | Planificado (ventana de cambios) |
+| Aplicacion de cambios de configuracion | Reinicio gradual de pods | Planificado (ventana de cambios) |
+| Pod atascado en CrashLoopBackOff | Reinicio de un solo pod | No planificado (investigar primero) |
+| Fuga de memoria/CPU observada | Reinicio de un solo pod (dirigido) | No planificado |
+| Rotacion de certificados (gRPC mTLS) | Reinicio gradual de pods | Planificado (ventana de mantenimiento) |
+| Despues de rotacion de secretos en Key Vault | Reinicio gradual de pods | Planificado |
 
 ---
 
-## Prerequisites
+## Requisitos previos
 
-| Resource | Details |
+| Recurso | Detalles |
 |---|---|
-| **Kubernetes access** | `kubectl` context set to the target cluster and namespace (`users`). |
-| **Azure CLI** | `az` logged in with `Contributor` or `AKS Cluster Admin` role. |
-| **Monitoring access** | Grafana dashboard (see [Observability](../decisions/observability.md)) and Elastic/Kibana for log inspection. |
-| **Slack channel** | `#platform-eng` (communication) and `#platform-sre` (coordination). |
-| **Change window** | Confirm the current time falls within the approved change window (if applicable). |
-| **PagerDuty** | Silence production alerts for `users-service` during the planned restart to avoid false-positive pages. |
+| **Acceso a Kubernetes** | Contexto de `kubectl` configurado para el cluster y namespace objetivo (`users`). |
+| **CLI de Azure** | `az` iniciado sesion con rol `Contributor` o `AKS Cluster Admin`. |
+| **Acceso a monitoreo** | Dashboard de Grafana (ver [Observabilidad](../decisions/observability.md)) y Elastic/Kibana para inspeccion de logs. |
+| **Canal de Slack** | `#platform-eng` (comunicacion) y `#platform-sre` (coordinacion). |
+| **Ventana de cambios** | Confirmar que la hora actual esta dentro de la ventana de cambios aprobada (si aplica). |
+| **PagerDuty** | Silenciar alertas de produccion para `users-service` durante el reinicio planificado para evitar falsos positivos. |
 
 ---
 
-## Pre-Restart Checklist
+## Lista de verificacion previa al reinicio
 
-Check each item before starting the restart procedure.
+Verifique cada elemento antes de iniciar el procedimiento de reinicio.
 
-### 1. Verify Auth Service Health
+### 1. Verificar el estado del Auth Service
 
-The Users Service has a hard runtime dependency on the Authentication Service. If Auth Service is degraded or unreachable, the restarted pods will mark themselves as `NotReady` once the JWKS local cache expires (5 minutes), cascading to a full service disruption.
+El Users Service tiene una dependencia critica en tiempo de ejecucion del Authentication Service. Si el Auth Service esta degradado o inalcanzable, los pods reiniciados se marcaran como `NotReady` una vez que expire la cache local de JWKS (5 minutos), lo que provocara una interrupcion total del servicio.
 
 ```bash
-# Check Auth Service health endpoint
+# Verificar el endpoint de estado del Auth Service
 curl -s -o /dev/null -w "%{http_code}" https://auth-service.platform.svc.cluster.local:5103/health/ready
 
-# Expected: 200
+# Esperado: 200
 ```
 
 ```bash
-# Alternative: check via Kubernetes readiness
+# Alternativa: verificar mediante el readiness de Kubernetes
 kubectl -n auth get pods -l app=auth-service --field-selector status.phase=Running
 kubectl -n auth wait --for=condition=Ready pods -l app=auth-service --timeout=30s
 ```
 
-**If Auth Service is unhealthy:** Abort the restart. Notify the Auth Service on-call team via `#platform-sre` and follow the Auth Service incident response runbook. Do not restart the Users Service until Auth Service has been restored.
+**Si el Auth Service no esta saludable:** Abortar el reinicio. Notificar al equipo de guardia del Auth Service a traves de `#platform-sre` y seguir el runbook de respuesta a incidentes del Auth Service. No reiniciar el Users Service hasta que el Auth Service haya sido restaurado.
 
-### 2. Verify Downstream Dependencies
+### 2. Verificar dependencias posteriores
 
-| Dependency | Check Command | Expected |
+| Dependencia | Comando de verificacion | Esperado |
 |---|---|---|
-| PostgreSQL primary | `kubectl -n users exec deploy/users-service -- pg_isready -h $(DB_HOST)` | `server accepts connections` |
+| PostgreSQL primario | `kubectl -n users exec deploy/users-service -- pg_isready -h $(DB_HOST)` | `server accepts connections` |
 | Service Bus | `az servicebus topic show --name auth-events --namespace <namespace>` | `status: Active` |
 | Notification Service | `curl -s https://notification-service.platform.svc.cluster.local/health/ready` | `200` |
 
-### 3. Check Event Processing Lag
+### 3. Verificar el retraso en el procesamiento de eventos
 
 ```bash
-# Query Prometheus metric via Grafana API or direct endpoint
-# A significant backlog (> 1000 events) must drain before restarting
+# Consultar la metrica de Prometheus via API de Grafana o endpoint directo
+# Un backlog significativo (> 1000 eventos) debe drenarse antes de reiniciar
 curl -s "http://prometheus.platform.svc.cluster.local:9090/api/v1/query?query=users_event_processing_lag_seconds" | jq '.data.result[].value[1]'
 ```
 
-**Threshold:** If lag > 60 seconds or backlog > 500 unprocessed events, allow the service to catch up before proceeding. Notify `#platform-sre` of the delay.
+**Umbral:** Si el retraso es > 60 segundos o el backlog es > 500 eventos no procesados, permita que el servicio se ponga al dia antes de continuar. Notificar a `#platform-sre` sobre la demora.
 
-### 4. Check Current Traffic Level
+### 4. Verificar el nivel de trafico actual
 
 ```bash
-# Query request rate (requests per second) for the last 5 minutes
+# Consultar la tasa de solicitudes (solicitudes por segundo) de los ultimos 5 minutos
 curl -s "http://prometheus.platform.svc.cluster.local:9090/api/v1/query?query=rate(http_requests_total{job='users-service'}[5m])" | jq '.data.result[].value[1]'
 ```
 
-If traffic exceeds 75% of the aggregate replica capacity (9 pods x 200 RPS = 1800 RPS typical), consider scaling up temporarily before restarting (see [Scale Up Precaution](#scale-up-precaution) below).
+Si el trafico supera el 75% de la capacidad agregada de las replicas (9 pods x 200 RPS = 1800 RPS tipico), considere escalar temporalmente antes de reiniciar (ver [Precaucion de escalado](#precaucion-de-escalado) a continuacion).
 
-### 5. Verify Istio Sidecar Presence
+### 5. Verificar la presencia del sidecar de Istio
 
 ```bash
 kubectl -n users get pods -l app=users-service -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[*].name}{"\n"}{end}'
 ```
 
-Verify every pod has two containers: `users-api` and `istio-proxy`. A missing sidecar means the pod will not join the service mesh and will not receive traffic.
+Verifique que cada pod tenga dos contenedores: `users-api` y `istio-proxy`. La falta de un sidecar significa que el pod no se unira a la malla de servicios y no recibira trafico.
 
-### 6. Notify the Team
+### 6. Notificar al equipo
 
-Post a message in `#platform-eng`:
+Publicar un mensaje en `#platform-eng`:
 
-> [RUNBOOK] Initiating rolling restart of Users Service in {environment}. Estimated duration: 5-10 minutes. Expected impact: none (rolling update in progress). Monitoring: {Grafana dashboard link}.
+> [RUNBOOK] Iniciando reinicio gradual de Users Service en {environment}. Duracion estimada: 5-10 minutos. Impacto esperado: ninguno (actualizacion gradual en progreso). Monitoreo: {Grafana dashboard link}.
 
-### 7. Silence Non-Critical Alerts
+### 7. Silenciar alertas no criticas
 
-Temporarily mute pager alerts for the following conditions in PagerDuty:
+Silenciar temporalmente las alertas de pager para las siguientes condiciones en PagerDuty:
 
-| Alert Condition | Rationale |
+| Condicion de alerta | Justificacion |
 |---|---|
-| `users_service_pod_restarting` | Expected during procedure |
-| `users_event_processing_lag_seconds > 60` | Temporary spike during restart is normal |
-| `users_http_error_rate > 1%` | Brief 503s during connection drain are acceptable |
+| `users_service_pod_restarting` | Esperado durante el procedimiento |
+| `users_event_processing_lag_seconds > 60` | Pico temporal durante el reinicio es normal |
+| `users_http_error_rate > 1%` | Breves 503 durante el drenaje de conexiones son aceptables |
 
-Do **not** silence `users_auth_service_unreachable` -- that alert must remain active.
+No silenciar `users_auth_service_unreachable` -- esa alerta debe permanecer activa.
 
-### 8. Scale Up Precaution (Optional)
+### 8. Precaucion de escalado (Opcional)
 
-If the service is running at elevated traffic, add one extra replica per region before beginning the restart to absorb the rolling replacement overhead:
+Si el servicio esta operando con trafico elevado, agregue una replica adicional por region antes de comenzar el reinicio para absorber la sobrecarga del reemplazo gradual:
 
 ```bash
-kubectl -n users scale deployment users-service --replicas=4  # Currently 3 per region
+kubectl -n users scale deployment users-service --replicas=4  # Actualmente 3 por region
 ```
 
-Record the baseline replica count so you can scale back down after validation.
+Registrar el numero de replicas base para poder reducirlo nuevamente despues de la validacion.
 
 ---
 
-## Restart Procedure
+## Procedimiento de reinicio
 
-### Rolling Pod Restart (Standard)
+### Reinicio gradual de pods (Estandar)
 
-Use for planned restarts, deployments, or configuration changes. This method replaces pods one at a time, keeping the service available throughout.
+Usar para reinicios planificados, despliegues o cambios de configuracion. Este metodo reemplaza los pods de uno en uno, manteniendo el servicio disponible durante todo el proceso.
 
-**Step 1 -- Initiate rolling restart**
+**Paso 1 -- Iniciar el reinicio gradual**
 
 ```bash
 kubectl -n users rollout restart deployment/users-service
 ```
 
-**Step 2 -- Monitor the rollout progress**
+**Paso 2 -- Monitorear el progreso del despliegue**
 
 ```bash
 kubectl -n users rollout status deployment/users-service --watch
 ```
 
-The command blocks and prints progress as each old pod is terminated and a new pod reaches `Ready`. Typical completion time: 3-7 minutes for 3 replicas.
+El comando se bloquea y muestra el progreso a medida que cada pod antiguo se termina y un nuevo pod alcanza el estado `Ready`. Tiempo tipico de finalizacion: 3-7 minutos para 3 replicas.
 
-**Step 3 -- Observe pod replacement in real time**
+**Paso 3 -- Observar el reemplazo de pods en tiempo real**
 
 ```bash
 kubectl -n users get pods -l app=users-service -w
 ```
 
-You will see each pod cycle through these phases:
+Verá cada pod pasar por estas fases:
 ```
 Terminating → (graceful shutdown) → Completed
 Pending → ContainerCreating → Running → (readiness probe) → Ready → (Istio iptables) → 1/1
 ```
 
-**Step 4 -- Verify the rollout completed**
+**Paso 4 -- Verificar que el despliegue gradual se completo**
 
 ```bash
 kubectl -n users rollout status deployment/users-service
-# Expected output: deployment "users-service" successfully rolled out
+# Salida esperada: deployment "users-service" successfully rolled out
 ```
 
 ---
 
-### Single Pod Restart (Targeted)
+### Reinicio de un solo pod (Dirigido)
 
-Use when a specific pod is exhibiting issues (memory leak, high latency, repeated warnings) and you want to minimize churn.
+Usar cuando un pod especifico presenta problemas (fuga de memoria, alta latencia, advertencias repetidas) y se desea minimizar la rotacion.
 
-**Step 1 -- Identify the unhealthy pod**
+**Paso 1 -- Identificar el pod no saludable**
 
 ```bash
 kubectl -n users get pods -l app=users-service
 ```
 
-**Step 2 -- Delete the pod (Kubernetes ReplicaSet recreates it)**
+**Paso 2 -- Eliminar el pod (Kubernetes ReplicaSet lo recrea)**
 
 ```bash
 kubectl -n users delete pod users-service-<random-suffix> --wait=false
 ```
 
-The ReplicaSet controller creates a replacement immediately. Use `--wait=false` to avoid blocking on the old pod's termination grace period.
+El controlador ReplicaSet crea un reemplazo inmediatamente. Use `--wait=false` para evitar bloquearse en el periodo de terminacion del pod antiguo.
 
-**Step 3 -- Monitor replacement**
+**Paso 3 -- Monitorear el reemplazo**
 
 ```bash
 kubectl -n users get pods -l app=users-service -w | grep <replacement-name>
@@ -210,41 +210,41 @@ kubectl -n users get pods -l app=users-service -w | grep <replacement-name>
 
 ---
 
-## Graceful Shutdown Details
+## Detalles del apagado gradual
 
-This section describes what happens when a pod receives the SIGTERM signal. Understanding this helps with troubleshooting slow-terminating pods.
+Esta seccion describe lo que sucede cuando un pod recibe la senal SIGTERM. Comprender esto ayuda a solucionar problemas con pods que terminan lentamente.
 
-### Shutdown Sequence (15-second window)
+### Secuencia de apagado (ventana de 15 segundos)
 
 ```
-Time 0s  SIGTERM sent by kubelet
+Tiempo 0s  SIGTERM enviado por kubelet
          ↓
-Time 0s  Process receives SIGTERM
-         ├── 1. Health endpoints return 503 (removed from service mesh)
-         ├── 2. Istio sidecar drains in-flight HTTP/gRPC connections
-         └── 3. Application shutdown sequence:
-              ├── 3a. Stop accepting new HTTP requests
-              ├── 3b. Drain active HTTP/gRPC connections (max 10s)
-              ├── 3c. Stop event consumer (Service Bus message pump)
-              ├── 3d. Complete processing current Service Bus messages
-              │      └── Complete (Abandoned)PeekLock → Complete (if < 5 min lock)
-              └── 3e. Close database connection pool gracefully
-                      └── Return idle connections to pool
-Time 10s PreStop hook (if configured) enters final wait
-Time 15s SIGKILL sent by kubelet — force kill
+Tiempo 0s  El proceso recibe SIGTERM
+         ├── 1. Los endpoints de salud devuelven 503 (eliminado de la malla de servicios)
+         ├── 2. El sidecar de Istio drena las conexiones HTTP/gRPC en curso
+         └── 3. Secuencia de apagado de la aplicacion:
+              ├── 3a. Dejar de aceptar nuevas solicitudes HTTP
+              ├── 3b. Drenar conexiones HTTP/gRPC activas (max 10s)
+              ├── 3c. Detener el consumidor de eventos (bomba de mensajes de Service Bus)
+              ├── 3d. Completar el procesamiento de mensajes actuales de Service Bus
+              │      └── Complete (Abandoned)PeekLock → Complete (si < 5 min de bloqueo)
+              └── 3e. Cerrar el pool de conexiones de base de datos de forma ordenada
+                      └── Devolver conexiones inactivas al pool
+Tiempo 10s El hook PreStop (si esta configurado) entra en espera final
+Tiempo 15s SIGKILL enviado por kubelet — terminacion forzada
 ```
 
-### Important Behaviors
+### Comportamientos importantes
 
-| Aspect | Detail |
+| Aspecto | Detalle |
 |---|---|
-| **In-flight HTTP requests** | Completed within the 10-second drain window. Requests exceeding this threshold receive a gateway timeout (504) from the Istio sidecar. |
-| **Open HTTP connections** | Idle keep-alive connections are closed immediately. The new pod accepts new connections. |
-| **Service Bus message processing** | The event consumer stops the message pump. Any message currently being processed is completed if possible (within PeekLock renewal interval). If processing cannot finish in time, the message is abandoned and redelivered to another pod. The deduplication table (`event_deduplication`) ensures at-most-once processing. |
-| **DB connection pool** | Idle connections are closed. In-flight queries complete within the 10-second drain. Long-running queries (rare, < 1% of requests) that exceed the drain window are terminated. The new pod's connection pool re-establishes connections on first query. |
-| **gRPC connections to Auth Service** | Existing mTLS channels are closed. The new pod re-establishes connections on the first JWT validation request. |
+| **Solicitudes HTTP en curso** | Se completan dentro de la ventana de drenaje de 10 segundos. Las solicitudes que exceden este umbral reciben un timeout de puerta de enlace (504) del sidecar de Istio. |
+| **Conexiones HTTP abiertas** | Las conexiones keep-alive inactivas se cierran inmediatamente. El nuevo pod acepta nuevas conexiones. |
+| **Procesamiento de mensajes de Service Bus** | El consumidor de eventos detiene la bomba de mensajes. Cualquier mensaje que se este procesando se completa si es posible (dentro del intervalo de renovacion de PeekLock). Si el procesamiento no puede finalizar a tiempo, el mensaje se abandona y se reentrega a otro pod. La tabla de deduplicacion (`event_deduplication`) garantiza un procesamiento como-maximo-una-vez. |
+| **Pool de conexiones de BD** | Las conexiones inactivas se cierran. Las consultas en curso se completan dentro de la ventana de drenaje de 10 segundos. Las consultas de larga duracion (raras, < 1% de las solicitudes) que exceden la ventana de drenaje se terminan. El pool de conexiones del nuevo pod restablece las conexiones en la primera consulta. |
+| **Conexiones gRPC al Auth Service** | Los canales mTLS existentes se cierran. El nuevo pod restablece las conexiones en la primera solicitud de validacion de JWT. |
 
-### PreStop Hook Configuration
+### Configuracion del hook PreStop
 
 ```yaml
 lifecycle:
@@ -260,41 +260,41 @@ lifecycle:
           sleep 5
 ```
 
-The 5-second sleep in the PreStop hook is deliberate -- it allows the readiness probe to fail (2 consecutive failures x 10s period = ~20s to be removed from EndpointSlice) before the process terminates. This prevents a burst of 502/503 errors from the Istio sidecar.
+La pausa de 5 segundos en el hook PreStop es deliberada -- permite que la sonda de readiness falle (2 fallos consecutivos x periodo de 10s = ~20s para ser eliminado de EndpointSlice) antes de que el proceso termine. Esto evita una rafaga de errores 502/503 del sidecar de Istio.
 
-### Configurable Termination Parameters
+### Parametros de terminacion configurables
 
-| Parameter | Current Value | Description |
+| Parametro | Valor actual | Descripcion |
 |---|---|---|
-| `terminationGracePeriodSeconds` | 30s | Max time between SIGTERM and SIGKILL |
-| Readiness probe failure threshold | 2 | Consecutive failures before removal |
-| Readiness probe interval | 10s | Seconds between probes |
+| `terminationGracePeriodSeconds` | 30s | Tiempo maximo entre SIGTERM y SIGKILL |
+| Umbral de fallo de la sonda readiness | 2 | Fallos consecutivos antes de la eliminacion |
+| Intervalo de la sonda readiness | 10s | Segundos entre sondas |
 
 ---
 
-## Verification During Restart
+## Verificacion durante el reinicio
 
-Perform these checks while the rollout is in progress.
+Realice estas verificaciones mientras el despliegue gradual esta en progreso.
 
-### 1. Verify Pod Readiness
+### 1. Verificar el estado de los pods
 
 ```bash
-# Watch pods transition to Ready
+# Observar la transicion de pods a Ready
 kubectl -n users get pods -l app=users-service -w
 ```
 
-### 2. Verify Readiness Probe (Auth Service Dependency)
+### 2. Verificar la sonda de readiness (dependencia del Auth Service)
 
-The readiness endpoint at `GET /api/health/ready` checks connectivity to Auth Service (via gRPC or JWKS cache), PostgreSQL, and Service Bus. This is the gating check that determines whether the pod receives traffic.
+El endpoint de readiness en `GET /api/health/ready` verifica la conectividad con Auth Service (via gRPC o cache JWKS), PostgreSQL y Service Bus. Esta es la verificacion que determina si el pod recibe trafico.
 
 ```bash
-# Port-forward to a newly started pod and check its readiness
+# Port-forward a un pod recien iniciado y verificar su readiness
 kubectl -n users port-forward pod/users-service-<new-pod> 7201:7201 &
 curl -s http://localhost:7201/api/health/ready | jq .
 kill %1
 ```
 
-Expected response:
+Respuesta esperada:
 ```json
 {
   "status": "Healthy",
@@ -306,231 +306,231 @@ Expected response:
 }
 ```
 
-**If `auth_service` shows `Unhealthy` and `cacheValid` is `false`:** The new pod cannot reach Auth Service and its JWKS cache is empty. The pod will remain `NotReady` indefinitely. Escalate immediately to the Auth Service team and consider rolling back (see [Rollback](#rollback-if-the-restart-fails)).
+**Si `auth_service` muestra `Unhealthy` y `cacheValid` es `false`:** El nuevo pod no puede alcanzar el Auth Service y su cache JWKS esta vacia. El pod permanecera `NotReady` indefinidamente. Escalar inmediatamente al equipo del Auth Service y considerar la revertir (ver [Revertir](#revertir-si-el-reinicio-falla)).
 
-### 3. Verify Istio Service Mesh Registration
+### 3. Verificar el registro en la malla de servicios Istio
 
 ```bash
-# Confirm the new pod is in the EndpointSlice
+# Confirmar que el nuevo pod esta en el EndpointSlice
 kubectl -n users get endpointslices -l kubernetes.io/service-name=users-service -o yaml | grep -A 2 addresses
 ```
 
-The output must include the new pod's IP address. If it is absent, the readiness probe is failing and the pod is not receiving traffic.
+La salida debe incluir la direccion IP del nuevo pod. Si esta ausente, la sonda de readiness esta fallando y el pod no esta recibiendo trafico.
 
-### 4. Monitor Error Rate During Restart
+### 4. Monitorear la tasa de error durante el reinicio
 
 ```bash
-# Check for 503/504 errors during the drain window
+# Verificar errores 503/504 durante la ventana de drenaje
 curl -s "http://prometheus.platform.svc.cluster.local:9090/api/v1/query?query=rate(http_requests_total{job='users-service',status=~'5..'}[1m])" | jq '.data.result[].value[1]'
 ```
 
-A brief spike of < 10 5xx responses during the 10-second drain window is acceptable. Sustained errors after the restart completes indicate a problem with the new pods.
+Un breve pico de < 10 respuestas 5xx durante la ventana de drenaje de 10 segundos es aceptable. Errores sostenidos despues de que se complete el reinicio indican un problema con los nuevos pods.
 
-### 5. Monitor Event Processing Lag
+### 5. Monitorear el retraso en el procesamiento de eventos
 
 ```bash
 curl -s "http://prometheus.platform.svc.cluster.local:9090/api/v1/query?query=users_event_processing_lag_seconds" | jq '.data.result[].value[1]'
 ```
 
-Lag may spike to 30-60 seconds during the restart while pods are cycling. It should return to < 10 seconds within 2 minutes of the rollout completing.
+El retraso puede aumentar a 30-60 segundos durante el reinicio mientras los pods se reciclan. Debe volver a < 10 segundos dentro de los 2 minutos posteriores a la finalizacion del despliegue gradual.
 
 ---
 
-## Post-Restart Validation
+## Validacion posterior al reinicio
 
-After the rollout shows `successfully rolled out`, run the full validation suite.
+Despues de que el despliegue muestre `successfully rolled out`, ejecute el conjunto completo de validacion.
 
-### 1. All Pods Healthy
+### 1. Todos los pods saludables
 
 ```bash
 kubectl -n users get pods -l app=users-service
-# Expected: all pods "Running" and "Ready (1/1)"
+# Esperado: todos los pods "Running" y "Ready (1/1)"
 ```
 
-### 2. Auth Service Connectivity
+### 2. Conectividad con Auth Service
 
 ```bash
-# Trigger a JWT validation by executing a health check that calls Auth Service
+# Activar una validacion JWT ejecutando una verificacion de salud que llame al Auth Service
 kubectl -n users exec deploy/users-service -- /bin/sh -c \
   "wget -q -O- http://localhost:7201/api/health/ready | grep auth_service"
 
-# Expected: "auth_service": "Healthy"
+# Esperado: "auth_service": "Healthy"
 ```
 
-### 3. End-to-End API Smoke Test
+### 3. Prueba de humo API de extremo a extremo
 
-Run a read-only smoke test against each region's endpoint to confirm the service is responding correctly.
+Ejecutar una prueba de humo de solo lectura contra el endpoint de cada region para confirmar que el servicio responde correctamente.
 
 ```bash
-# West Europe (primary)
+# West Europe (primario)
 curl -s -w "\nHTTP %{http_code}" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   https://users.we.platform.internal/api/health/live
 
-# Expected: {"status":"Healthy"} HTTP 200
+# Esperado: {"status":"Healthy"} HTTP 200
 ```
 
 ```bash
-# North Europe (secondary)
+# North Europe (secundario)
 curl -s -w "\nHTTP %{http_code}" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   https://users.ne.platform.internal/api/health/live
 
-# Expected: {"status":"Healthy"} HTTP 200
+# Esperado: {"status":"Healthy"} HTTP 200
 ```
 
-### 4. Database Connectivity
+### 4. Conectividad de base de datos
 
 ```bash
 kubectl -n users exec deploy/users-service -- /bin/sh -c \
   "wget -q -O- http://localhost:7201/api/health/ready | grep database"
 
-# Expected: "database": "Healthy"
+# Esperado: "database": "Healthy"
 ```
 
-### 5. Event Processing Resumed
+### 5. Procesamiento de eventos reanudado
 
 ```bash
-# Check that event processing counters are incrementing
+# Verificar que los contadores de procesamiento de eventos esten incrementando
 curl -s "http://prometheus.platform.svc.cluster.local:9090/api/v1/query?query=rate(users_events_processed_total[1m])" | jq '.data.result[].value[1]'
 
-# Expected: value > 0 (events are being processed)
+# Esperado: valor > 0 (los eventos se estan procesando)
 ```
 
-### 6. Restore Alerting
+### 6. Restaurar alertas
 
-Re-enable any alerts silenced during the pre-restart checklist. Verify active alerts:
+Reactivar las alertas silenciadas durante la lista de verificacion previa al reinicio. Verificar las alertas activas:
 
 ```bash
 curl -s "http://alertmanager.platform.svc.cluster.local:9093/api/v2/alerts" | jq '.data | length'
 ```
 
-Confirm no alerting rules are firing for `users-service` except those pre-existing before the restart.
+Confirmar que no hay reglas de alerta disparadas para `users-service` excepto aquellas preexistentes antes del reinicio.
 
-### 7. Scale Down (If Scaled Up)
+### 7. Reducir escala (Si se escalo)
 
-If you added extra replicas during the pre-restart phase, scale back to the baseline:
+Si se agregaron replicas adicionales durante la fase previa al reinicio, volver a la linea base:
 
 ```bash
 kubectl -n users scale deployment users-service --replicas=<original-replica-count>
 ```
 
-### 8. Report Completion
+### 8. Reportar finalizacion
 
-Post in `#platform-eng`:
+Publicar en `#platform-eng`:
 
-> [RUNBOOK] Rolling restart of Users Service in {environment} completed successfully. Duration: {duration}. Auth Service connectivity verified. Event processing resumed. All smoke tests passed. Dashboard: {Grafana dashboard link}.
+> [RUNBOOK] Reinicio gradual de Users Service en {environment} completado exitosamente. Duracion: {duration}. Conectividad con Auth Service verificada. Procesamiento de eventos reanudado. Todas las pruebas de humo pasaron. Dashboard: {Grafana dashboard link}.
 
 ---
 
-## Rollback: If the Restart Fails
+## Revertir: Si el reinicio falla
 
-If a pod fails to become `Ready`, the rollout is stuck, or error rates are elevated after the restart, roll back immediately.
+Si un pod no logra estar `Ready`, el despliegue gradual se queda atascado o las tasas de error son elevadas despues del reinicio, revertir inmediatamente.
 
-### Rollback Triggers
+### Disparadores de revertir
 
-| Condition | Action |
+| Condicion | Accion |
 |---|---|
-| A pod remains `CrashLoopBackOff` for > 2 minutes | Roll back |
-| Readiness probe fails for > 60 seconds on any new pod | Roll back |
-| Error rate above 5% sustained for > 2 minutes | Roll back |
-| Auth Service reports `Unhealthy` on new pods with empty cache | Roll back |
-| Event processing lag exceeds 300 seconds and rising | Roll back |
+| Un pod permanece en `CrashLoopBackOff` por > 2 minutos | Revertir |
+| La sonda de readiness falla por > 60 segundos en cualquier pod nuevo | Revertir |
+| Tasa de error superior al 5% sostenida por > 2 minutos | Revertir |
+| Auth Service reporta `Unhealthy` en pods nuevos con cache vacia | Revertir |
+| El retraso de procesamiento de eventos supera los 300 segundos y sigue aumentando | Revertir |
 
-### Rollback via `kubectl rollout undo`
+### Revertir mediante `kubectl rollout undo`
 
 ```bash
-# Roll back to the previous revision
+# Revertir a la revision anterior
 kubectl -n users rollout undo deployment/users-service
 
-# Monitor the rollback
+# Monitorear la revertir
 kubectl -n users rollout status deployment/users-service --watch
 ```
 
-### Rollback to a Specific Revision
+### Revertir a una revision especifica
 
 ```bash
-# List available revisions
+# Listar revisiones disponibles
 kubectl -n users rollout history deployment/users-service
 
-# Roll back to a specific revision (e.g., revision 3)
+# Revertir a una revision especifica (ej., revision 3)
 kubectl -n users rollout undo deployment/users-service --to-revision=3
 ```
 
-### Rollback via Helm (if using Helm)
+### Revertir mediante Helm (si se usa Helm)
 
 ```bash
 helm -n users rollback users-service <previous-revision-number>
 ```
 
-### Post-Rollback Verification
+### Verificacion posterior a la revertir
 
-1. Run the full Post-Restart Validation suite above.
-2. Confirm all original pods are `Ready`.
-3. Confirm Auth Service connectivity, event processing, and API health.
-4. In `#platform-eng`, post:
+1. Ejecutar el conjunto completo de Validacion posterior al reinicio anterior.
+2. Confirmar que todos los pods originales esten `Ready`.
+3. Confirmar la conectividad con Auth Service, el procesamiento de eventos y el estado de la API.
+4. En `#platform-eng`, publicar:
 
-> [ROLLBACK] Rolling restart of Users Service failed — rolled back to revision {N}. Root cause: {summary}. Triage ticket: {link}.
+> [ROLLBACK] Reinicio gradual de Users Service fallo — se revirtio a la revision {N}. Causa raiz: {summary}. Ticket de triage: {link}.
 
-5. Create a post-incident ticket documenting the failure (see [Post-Incident Actions](#post-incident-actions)).
+5. Crear un ticket post-incidente documentando el fallo (ver [Acciones posteriores al incidente](#acciones-posteriores-al-incidente)).
 
-### Rollback If Auth Service Is the Cause
+### Revertir si el Auth Service es la causa
 
-If the new pods are failing readiness checks because Auth Service is unreachable:
+Si los nuevos pods estan fallando las verificaciones de readiness porque el Auth Service es inalcanzable:
 
-1. Do not roll back the Users Service -- Auth Service being down means old pods would also be affected once their JWKS cache expires.
-2. Focus on restoring Auth Service first.
-3. If Auth Service recovery is expected to take longer than 5 minutes, consider temporarily increasing the `Auth__JWKSCacheTtlMinutes` value for the Users Service via ConfigMap (requires another restart, so coordinate this as a recovery measure).
+1. No revertir el Users Service -- que el Auth Service este caido significa que los pods antiguos tambien se verian afectados una vez que su cache JWKS expire.
+2. Enfocarse en restaurar primero el Auth Service.
+3. Si se espera que la recuperacion del Auth Service tome mas de 5 minutos, considere aumentar temporalmente el valor de `Auth__JWKSCacheTtlMinutes` para el Users Service mediante ConfigMap (requiere otro reinicio, por lo que debe coordinarse como medida de recuperacion).
 
 ---
 
-## Post-Incident Actions
+## Acciones posteriores al incidente
 
-If the restart triggered a rollback or caused user-facing impact:
+Si el reinicio provoco una revertir o causo impacto visible para el usuario:
 
-1. **Open a post-incident review (PIR) ticket** with the following:
-   - Timestamp of the restart attempt
-   - Pre-restart metrics (traffic, event lag, dependency health)
-   - Which step failed and the observed symptoms
-   - Rollback method and duration
-   - Grafana dashboard snapshot(s) of the incident window
-   - Pod logs from the failing pods
+1. **Abrir un ticket de revision post-incidente (PIR)** con lo siguiente:
+   - Marca de tiempo del intento de reinicio
+   - Metricas previas al reinicio (trafico, retraso de eventos, salud de dependencias)
+   - Que paso fallo y los sintomas observados
+   - Metodo de revertir y duracion
+   - Captura(s) del dashboard de Grafana de la ventana del incidente
+   - Logs de los pods fallidos
 
-2. **Capture logs from the failing pods** before they are garbage-collected:
+2. **Capturar logs de los pods fallidos** antes de que sean recolectados como basura:
 
 ```bash
 kubectl -n users logs deploy/users-service --previous --tail=200 > users-service-previous-pod.log
 kubectl -n users logs deploy/users-service --tail=500 > users-service-current-pod.log
 ```
 
-3. **Review readiness probe failures** in the kubelet logs:
+3. **Revisar fallos de la sonda de readiness** en los logs de kubelet:
 
 ```bash
-# Check kubelet events for the namespace
+# Verificar eventos de kubelet para el namespace
 kubectl -n users get events --sort-by='.lastTimestamp' | grep -i 'unhealthy'
 ```
 
-4. **Update this runbook** if the procedure was unclear or missing a step relevant to the failure.
+4. **Actualizar este runbook** si el procedimiento no fue claro o faltaba un paso relevante para el fallo.
 
 ---
 
-## Related Documents
+## Documentos relacionados
 
-| Document | Description |
+| Documento | Descripcion |
 |---|---|
-| [Deployment View](../architecture/deployment-view.md) | AKS topology, health check configuration, Auth Service dependency |
-| [System Context](../architecture/context.md) | Auth Service dependency details, circuit breaker, JWKS cache behavior |
-| [Events](../api/events.md) | Event processing guarantees, deduplication, message lock duration |
-| [Variables & Configuration](../api/variables.md) | Environment variables, feature flags, Auth Service timeout settings |
-| [Deployment Runbook](deployment.md) | Full deployment procedure for new releases |
-| [Rollback Runbook](rollback.md) | General rollback procedures for failed deployments |
-| [Incident Response](incident-response.md) | Incident classification, severity levels, and escalation paths |
-| [Observability](../decisions/observability.md) | Metrics, dashboards, and alerting configuration |
+| [Vista de despliegue](../architecture/deployment-view.md) | Topologia de AKS, configuracion de verificaciones de salud, dependencia del Auth Service |
+| [Contexto del sistema](../architecture/context.md) | Detalles de dependencia del Auth Service, circuit breaker, comportamiento de cache JWKS |
+| [Eventos](../api/events.md) | Garantias de procesamiento de eventos, deduplicacion, duracion del bloqueo de mensajes |
+| [Variables y configuracion](../api/variables.md) | Variables de entorno, feature flags, configuraciones de timeout del Auth Service |
+| [Runbook de despliegue](deployment.md) | Procedimiento completo de despliegue para nuevas versiones |
+| [Runbook de revertir](rollback.md) | Procedimientos generales de revertir para despliegues fallidos |
+| [Respuesta a incidentes](incident-response.md) | Clasificacion de incidentes, niveles de severidad y rutas de escalamiento |
+| [Observabilidad](../decisions/observability.md) | Metricas, dashboards y configuracion de alertas |
 
 ---
 
-## Revision History
+## Historial de revisiones
 
-| Date | Author | Changes |
+| Fecha | Autor | Cambios |
 |---|---|---|
-| 2026-07-26 | Platform SRE Team | Initial version |
+| 2026-07-26 | Equipo SRE de Plataforma | Version inicial |

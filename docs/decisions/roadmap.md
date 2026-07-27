@@ -1,122 +1,122 @@
-# Roadmap — Users Service
+# Hoja de Ruta — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Overview
+## Visión General
 
-This document defines the planned feature roadmap for the Users Service through Q1 2027. Features are organized by quarter with milestones, success criteria, and dependencies.
-
----
-
-## Q3 2026 (July — September)
-
-### 1. Microsoft Graph API Profile Enrichment
-
-**Description:** Integrate with Microsoft Graph API to enrich user profiles with data from Entra ID, including profile photo, department, manager, job title, and office location. Enrichment runs asynchronously on user creation and on a scheduled refresh cycle.
-
-**Milestones:**
-
-| Milestone | Target Date | Deliverable |
-|---|---|---|
-| Design review | 2026-07-25 | Integration architecture, permission model |
-| Graph API client | 2026-08-10 | Authenticated HTTP client, token management |
-| Profile enrichment on user creation | 2026-08-30 | Async enrichment pipeline triggered by user.created event |
-| Scheduled enrichment refresh | 2026-09-15 | Daily background job for stale profile refresh |
-| Cache layer | 2026-09-25 | Redis caching of Graph API responses (1-hour TTL) |
-| GA release | 2026-09-30 | Profile enrichment enabled for all users |
-
-**Success Criteria:**
-- Profile enrichment completes for 95% of users within 5 minutes of creation.
-- Graph API rate limits respected (max 10,000 requests per 10 minutes per tenant).
-- Cache hit ratio > 80% for frequently accessed profiles.
-- Graceful degradation: users created when Graph API is unavailable fall back to local data only.
-
-### 2. Enhanced RBAC Model
-
-**Description:** Extend the role-based access control model from the current three roles (Admin, Operator, User) to support custom roles with granular permissions. Introduce permission sets that can be composed into roles.
-
-**Milestones:**
-
-| Milestone | Target Date | Deliverable |
-|---|---|---|
-| RBAC schema design | 2026-08-01 | Permission model, role hierarchy |
-| Custom role CRUD API | 2026-08-20 | `POST/GET/PUT/DELETE /api/v2/roles` |
-| Permission assignment | 2026-09-05 | Assign permissions to roles, validate at middleware |
-| Role assignment to users | 2026-09-20 | `POST /api/v2/users/{id}/roles` |
-| GA release | 2026-09-30 | Enhanced RBAC with custom roles |
-
-### 3. Cursor Pagination for List Endpoints
-
-**Description:** Replace offset-based pagination with cursor-based pagination for all list endpoints. Performance improvement for large datasets and consistent pagination across the platform.
-
-**Milestones:**
-
-| Milestone | Target Date | Deliverable |
-|---|---|---|
-| Cursor pagination implementation | 2026-08-10 | Base64URL-encoded cursor, keyset pagination |
-| Migration of existing endpoints | 2026-08-25 | All list endpoints use cursor pagination |
-| Backward-compatible v1 deprecation | 2026-09-01 | Offset pagination deprecated with Sunset header |
+Este documento define la hoja de ruta de características planificadas para el Users Service hasta Q1 2027. Las características están organizadas por trimestre con hitos, criterios de éxito y dependencias.
 
 ---
 
-## Q4 2026 (October — December)
+## Q3 2026 (Julio — Septiembre)
 
-### 1. SCIM 2.0 Provisioning
+### 1. Enriquecimiento de Perfil con Microsoft Graph API
 
-**Description:** Implement SCIM 2.0 server endpoints for automated user provisioning from identity providers (Entra ID, Okta). See future-integrations.md for details.
+**Descripción:** Integrar con Microsoft Graph API para enriquecer perfiles de usuario con datos de Entra ID, incluyendo foto de perfil, departamento, gerente, título del puesto y ubicación de oficina. El enriquecimiento se ejecuta asíncronamente en la creación de usuario y en un ciclo de actualización programado.
 
-### 2. Bulk User Operations
+**Hitos:**
 
-**Description:** Support bulk create, update, and delete operations for users (up to 1000 users per request). Includes CSV/JSON input, validation summary, error reporting, and idempotent processing.
-
-**Milestones:**
-
-| Milestone | Target Date | Deliverable |
+| Hito | Fecha Objetivo | Entregable |
 |---|---|---|
-| Design review | 2026-10-01 | Bulk operation schema, error model |
-| Bulk create | 2026-10-20 | `POST /api/v2/users/bulk` |
-| Bulk update | 2026-11-05 | `PATCH /api/v2/users/bulk` |
-| Bulk soft-delete | 2026-11-15 | `POST /api/v2/users/bulk/delete` |
-| Result reporting | 2026-12-01 | Per-item success/error reporting |
-| GA release | 2026-12-15 | Bulk operations available |
+| Revisión de diseño | 2026-07-25 | Arquitectura de integración, modelo de permisos |
+| Cliente Graph API | 2026-08-10 | Cliente HTTP autenticado, gestión de tokens |
+| Enriquecimiento de perfil en creación de usuario | 2026-08-30 | Pipeline de enriquecimiento asíncrono desencadenado por evento user.created |
+| Actualización programada de enriquecimiento | 2026-09-15 | Trabajo diario en segundo plano para actualización de perfiles obsoletos |
+| Capa de caché | 2026-09-25 | Caché Redis de respuestas de Graph API (TTL de 1 hora) |
+| Lanzamiento GA | 2026-09-30 | Enriquecimiento de perfil habilitado para todos los usuarios |
 
-### 3. Audit Trail for User Mutations
+**Criterios de Éxito:**
+- El enriquecimiento de perfil se completa para el 95% de los usuarios dentro de los 5 minutos posteriores a la creación.
+- Límites de tasa de Graph API respetados (máx. 10,000 solicitudes por cada 10 minutos por inquilino).
+- Tasa de aciertos de caché > 80% para perfiles de acceso frecuente.
+- Degradación gradual: los usuarios creados cuando Graph API no está disponible usan solo datos locales.
 
-**Description:** Implement comprehensive audit logging for all user mutations, capturing before/after state, actor identity, timestamp, and IP address. Audit logs are immutable and stored separately from operational logs.
+### 2. Modelo RBAC Mejorado
+
+**Descripción:** Extender el modelo de control de acceso basado en roles de los tres roles actuales (Admin, Operator, User) para admitir roles personalizados con permisos granulares. Introducir conjuntos de permisos que puedan componerse en roles.
+
+**Hitos:**
+
+| Hito | Fecha Objetivo | Entregable |
+|---|---|---|
+| Diseño de esquema RBAC | 2026-08-01 | Modelo de permisos, jerarquía de roles |
+| API CRUD de roles personalizados | 2026-08-20 | `POST/GET/PUT/DELETE /api/v2/roles` |
+| Asignación de permisos | 2026-09-05 | Asignar permisos a roles, validar en middleware |
+| Asignación de roles a usuarios | 2026-09-20 | `POST /api/v2/users/{id}/roles` |
+| Lanzamiento GA | 2026-09-30 | RBAC mejorado con roles personalizados |
+
+### 3. Paginación por Cursor para Endpoints de Listado
+
+**Descripción:** Reemplazar la paginación basada en desplazamiento con paginación basada en cursor para todos los endpoints de listado. Mejora de rendimiento para grandes conjuntos de datos y paginación consistente en toda la plataforma.
+
+**Hitos:**
+
+| Hito | Fecha Objetivo | Entregable |
+|---|---|---|
+| Implementación de paginación por cursor | 2026-08-10 | Cursor codificado en Base64URL, paginación keyset |
+| Migración de endpoints existentes | 2026-08-25 | Todos los endpoints de listado usan paginación por cursor |
+| Obsolecencia de v1 compatible hacia atrás | 2026-09-01 | Paginación por desplazamiento obsoleta con encabezado Sunset |
 
 ---
 
-## Q1 2027 (January — March)
+## Q4 2026 (Octubre — Diciembre)
 
-### 1. Advanced Tenant Management
+### 1. Aprovisionamiento SCIM 2.0
 
-**Description:** Self-service tenant creation, tenant configuration management, tenant-level feature flags, and tenant usage reporting.
+**Descripción:** Implementar endpoints de servidor SCIM 2.0 para aprovisionamiento automatizado de usuarios desde proveedores de identidad (Entra ID, Okta). Ver future-integrations.md para detalles.
 
-**Milestones:**
+### 2. Operaciones de Usuario por Lote
 
-| Milestone | Target Date | Deliverable |
+**Descripción:** Soporte para operaciones masivas de creación, actualización y eliminación de usuarios (hasta 1000 usuarios por solicitud). Incluye entrada CSV/JSON, resumen de validación, informe de errores y procesamiento idempotente.
+
+**Hitos:**
+
+| Hito | Fecha Objetivo | Entregable |
 |---|---|---|
-| Tenant creation API | 2027-01-15 | `POST /api/v2/tenants` |
-| Tenant configuration | 2027-02-01 | Feature flags, settings per tenant |
-| Tenant usage reporting | 2027-02-15 | Usage metrics per tenant |
-| GA release | 2027-03-01 | Self-service tenant management |
+| Revisión de diseño | 2026-10-01 | Esquema de operación por lote, modelo de error |
+| Creación por lote | 2026-10-20 | `POST /api/v2/users/bulk` |
+| Actualización por lote | 2026-11-05 | `PATCH /api/v2/users/bulk` |
+| Soft-delete por lote | 2026-11-15 | `POST /api/v2/users/bulk/delete` |
+| Informe de resultados | 2026-12-01 | Informe de éxito/error por elemento |
+| Lanzamiento GA | 2026-12-15 | Operaciones por lote disponibles |
 
-### 2. User Data Export (GDPR Portability)
+### 3. Registro de Auditoría para Mutaciones de Usuario
 
-**Description:** Implement GDPR Article 20 data portability: export all user data in machine-readable JSON format, including profile, roles, activity history.
-
-### 3. Hard-Delete Purge Job
-
-**Description:** Background job that permanently deletes users that have been soft-deleted for more than 90 days (compliance requirement). Includes configurable retention period, pre-deletion notification, and audit logging.
+**Descripción:** Implementar registro de auditoría completo para todas las mutaciones de usuario, capturando estado anterior/posterior, identidad del actor, marca de tiempo y dirección IP. Los registros de auditoría son inmutables y se almacenan separadamente de los logs operativos.
 
 ---
 
-## Future Considerations
+## Q1 2027 (Enero — Marzo)
 
-- **User Groups:** Group management with nested group support.
-- **User Delegation:** Temporary access delegation between users.
-- **Self-Service Profile Management:** Allow users to update own profile fields.
-- **Approval Workflows:** Multi-step approval for user role changes.
-- **Entra ID Group Sync:** Automatic user group synchronization from Entra ID.
+### 1. Gestión Avanzada de Inquilinos
+
+**Descripción:** Creación de inquilinos en autoservicio, gestión de configuración de inquilinos, banderas de funcionalidad a nivel de inquilino e informes de uso de inquilinos.
+
+**Hitos:**
+
+| Hito | Fecha Objetivo | Entregable |
+|---|---|---|
+| API de creación de inquilinos | 2027-01-15 | `POST /api/v2/tenants` |
+| Configuración de inquilinos | 2027-02-01 | Banderas de funcionalidad, configuraciones por inquilino |
+| Informes de uso de inquilinos | 2027-02-15 | Métricas de uso por inquilino |
+| Lanzamiento GA | 2027-03-01 | Gestión de inquilinos en autoservicio |
+
+### 2. Exportación de Datos de Usuario (Portabilidad GDPR)
+
+**Descripción:** Implementar portabilidad de datos del Artículo 20 del GDPR: exportar todos los datos de usuario en formato JSON legible por máquina, incluyendo perfil, roles, historial de actividad.
+
+### 3. Trabajo de Purga de Hard-Delete
+
+**Descripción:** Trabajo en segundo plano que elimina permanentemente usuarios que han estado en soft-delete por más de 90 días (requisito de cumplimiento). Incluye período de retención configurable, notificación previa a la eliminación y registro de auditoría.
+
+---
+
+## Consideraciones Futuras
+
+- **Grupos de Usuarios:** Gestión de grupos con soporte de grupos anidados.
+- **Delegación de Usuarios:** Delegación temporal de acceso entre usuarios.
+- **Gestión de Perfil de Autoservicio:** Permitir a los usuarios actualizar sus propios campos de perfil.
+- **Flujos de Aprobación:** Aprobación de múltiples pasos para cambios de rol de usuario.
+- **Sincronización de Grupos de Entra ID:** Sincronización automática de grupos de usuarios desde Entra ID.

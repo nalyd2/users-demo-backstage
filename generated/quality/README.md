@@ -1,14 +1,14 @@
-# Generated Quality Reports
+# Informes de Calidad Generados
 
-Populated by CI/CD. Contains test results, code coverage, and static analysis reports for the Users Service.
+Poblado por CI/CD. Contiene resultados de pruebas, cobertura de código e informes de análisis estático para el Servicio de Usuarios.
 
-| Artifact | Format | Tool |
+| Artefacto | Formato | Herramienta |
 |---|---|---|
-| `test-results.xml` | NUnit XML | xUnit via `dotnet test --logger trx` |
-| `code-coverage.xml` | Cobertura XML | Coverlet + ReportGenerator |
+| `test-results.xml` | XML NUnit | xUnit vía `dotnet test --logger trx` |
+| `code-coverage.xml` | XML Cobertura | Coverlet + ReportGenerator |
 | `sonarqube-report.json` | JSON | SonarQube Cloud |
 | `dependency-scan-results.json` | JSON | Mend (WhiteSource) |
-| `benchmark-results.md` | Markdown | BenchmarkDotNet — profile CRUD, pagination, JWT validation fallback performance |
-| `lint-results.json` | JSON | Roslyn Analyzers |
+| `benchmark-results.md` | Markdown | BenchmarkDotNet — rendimiento de CRUD de perfiles, paginación, respaldo de validación JWT |
+| `lint-results.json` | JSON | Analizadores Roslyn |
 
-**Not committed.**
+**No confirmado en el repositorio.**

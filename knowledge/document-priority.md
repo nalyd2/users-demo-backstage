@@ -1,53 +1,53 @@
-# Document Priority for AI Retrieval
+# Prioridad de Documentos para Recuperacion con IA
 
-## Priority Levels
+## Niveles de Prioridad
 
-| Priority | Description | Use in RAG |
+| Prioridad | Descripcion | Uso en RAG |
 |---|---|---|
-| **P0 — Critical** | Must be retrieved first for relevant queries | Always included in top results |
-| **P1 — High** | Highly relevant for specific domains | Included when domain matches |
-| **P2 — Medium** | Useful context, not urgent | Included when Top-K > 3 |
-| **P3 — Low** | Background information | Included only on explicit query match |
+| **P0 -- Critico** | Debe recuperarse primero para consultas relevantes | Siempre incluido en los resultados principales |
+| **P1 -- Alto** | Altamente relevante para dominios especificos | Incluido cuando el dominio coincide |
+| **P2 -- Medio** | Contexto util, no urgente | Incluido cuando Top-K > 3 |
+| **P3 -- Bajo** | Informacion de contexto | Incluido solo si hay coincidencia explicita con la consulta |
 
-## Document Priority Matrix
+## Matriz de Prioridad de Documentos
 
-| Document | Priority | Primary Query Types |
+| Documento | Prioridad | Tipos de Consulta Principales |
 |---|---|---|
-| `docs/architecture/overview.md` | P1 | "What is the Users Service?", "Architecture overview" |
-| `docs/architecture/context.md` | P1 | "How does Users Service fit into the platform?", "What does Users Service depend on?" |
-| `docs/architecture/containers.md` | P1 | "What databases does Users Service use?", "Containers and runtimes" |
-| `docs/architecture/components.md` | P1 | "How is the Users Service structured internally?", "What components does it have?" |
-| `docs/architecture/deployment-view.md` | P2 | "Where is Users Service deployed?" |
-| `docs/architecture/security.md` | P0 | "How is JWT validated?", "What is the RBAC model?", "How is tenant isolation enforced?", "PII handling" |
-| `docs/architecture/technology-stack.md` | P2 | "What version of .NET?", "Technology inventory", "Dependency versions" |
-| `docs/api/users-api.md` | P0 | "How do I create/update/delete users?", "API reference", "What fields are required?" |
-| `docs/api/events.md` | P1 | "What events does Users Service publish?", "Auth events consumed", "Event schema" |
-| `docs/api/variables.md` | P1 | "How do I configure the Users Service?", "Environment variables" |
-| `docs/runbooks/incident-response.md` | P0 | "Users Service is down — what do I do?" |
-| `docs/runbooks/restart-service.md` | P0 | "How do I restart the service?" |
-| `docs/runbooks/deployment.md` | P1 | "How do I deploy changes?" |
-| `docs/runbooks/rollback.md` | P0 | "How do I rollback a bad deployment?" |
-| `docs/runbooks/operations.md` | P2 | "How do I rotate database credentials?", "Routine maintenance", "Profile sync troubleshooting" |
-| `docs/adr/*.md` | P2 | "Why did we choose PostgreSQL over MongoDB?", "Architecture rationale", "ADR-002 JWT validation" |
-| `docs/onboarding/*.md` | P2 | "How do I set up local dev?", "New developer questions" |
-| `docs/decisions/security-guidelines.md` | P1 | "Security requirements", "What is our security policy?" |
-| `docs/decisions/dependencies.md` | P1 | "What does Users Service depend on?", "Auth Service dependency" |
-| `docs/decisions/*` (other) | P3 | General policy questions |
-| `README.md` | P1 | Entry-level questions, endpoint summary, platform relationships |
-| `openapi.yaml` | P0 | API specification queries, endpoint schema, request/response shapes |
-| `mkdocs.yml` | P3 | Documentation structure queries |
+| `docs/architecture/overview.md` | P1 | "Que es el Servicio de Usuarios?", "Resumen de arquitectura" |
+| `docs/architecture/context.md` | P1 | "Como encaja el Servicio de Usuarios en la plataforma?", "De que depende el Servicio de Usuarios?" |
+| `docs/architecture/containers.md` | P1 | "Que bases de datos usa el Servicio de Usuarios?", "Contenedores y entornos de ejecucion" |
+| `docs/architecture/components.md` | P1 | "Como esta estructurado internamente el Servicio de Usuarios?", "Que componentes tiene?" |
+| `docs/architecture/deployment-view.md` | P2 | "Donde esta desplegado el Servicio de Usuarios?" |
+| `docs/architecture/security.md` | P0 | "Como se valida JWT?", "Cual es el modelo RBAC?", "Como se aplica el aislamiento de inquilinos?", "Manejo de PII" |
+| `docs/architecture/technology-stack.md` | P2 | "Que version de .NET?", "Inventario de tecnologia", "Versiones de dependencias" |
+| `docs/api/users-api.md` | P0 | "Como creo/actualizo/elimino usuarios?", "Referencia de API", "Que campos son obligatorios?" |
+| `docs/api/events.md` | P1 | "Que eventos publica el Servicio de Usuarios?", "Eventos de autenticacion consumidos", "Esquema de eventos" |
+| `docs/api/variables.md` | P1 | "Como configuro el Servicio de Usuarios?", "Variables de entorno" |
+| `docs/runbooks/incident-response.md` | P0 | "El Servicio de Usuarios esta caido -- que hago?" |
+| `docs/runbooks/restart-service.md` | P0 | "Como reinicio el servicio?" |
+| `docs/runbooks/deployment.md` | P1 | "Como despliego cambios?" |
+| `docs/runbooks/rollback.md` | P0 | "Como revierto un despliegue fallido?" |
+| `docs/runbooks/operations.md` | P2 | "Como roto las credenciales de la base de datos?", "Mantenimiento rutinario", "Solucion de problemas de sincronizacion de perfiles" |
+| `docs/adr/*.md` | P2 | "Por que elegimos PostgreSQL sobre MongoDB?", "Justificacion de arquitectura", "ADR-002 Validacion JWT" |
+| `docs/onboarding/*.md` | P2 | "Como configuro el entorno de desarrollo local?", "Preguntas de nuevos desarrolladores" |
+| `docs/decisions/security-guidelines.md` | P1 | "Requisitos de seguridad", "Cual es nuestra politica de seguridad?" |
+| `docs/decisions/dependencies.md` | P1 | "De que depende el Servicio de Usuarios?", "Dependencia del Servicio de Autenticacion" |
+| `docs/decisions/*` (otros) | P3 | Preguntas generales de politicas |
+| `README.md` | P1 | Preguntas de nivel inicial, resumen de endpoints, relaciones de la plataforma |
+| `openapi.yaml` | P0 | Consultas de especificacion de API, esquema de endpoints, formas de solicitud/respuesta |
+| `mkdocs.yml` | P3 | Consultas de estructura de documentacion |
 
-## Priority in Retrieval Pipeline
+## Prioridad en el Pipeline de Recuperacion
 
-The priority score is combined with the vector similarity score:
+La puntuacion de prioridad se combina con la puntuacion de similitud vectorial:
 
 ```
-final_score = (0.7 × cosine_similarity) + (0.3 × normalized_priority_score)
+puntuacion_final = (0.7 × similitud_coseno) + (0.3 × puntuacion_prioridad_normalizada)
 ```
 
-Where `normalized_priority_score` = P0:1.0, P1:0.75, P2:0.5, P3:0.25
+Donde `puntuacion_prioridad_normalizada` = P0:1.0, P1:0.75, P2:0.5, P3:0.25
 
-## Related Documents
+## Documentos Relacionados
 
 - [Sources of Truth](sources-of-truth.md)
 - [RAG](rag.md)

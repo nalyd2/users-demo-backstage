@@ -1,11 +1,11 @@
-# Generated Catalog Metadata
+# Metadatos del Catálogo Generados
 
-Enriched Backstage catalog metadata produced by CI/CD for the Users Service.
+Metadatos enriquecidos del catálogo de Backstage producidos por CI/CD para el Servicio de Usuarios.
 
-| Artifact | Description |
+| Artefacto | Descripción |
 |---|---|
-| `catalog-enriched.yaml` | `catalog-info.yaml` with build number, deployment timestamp, and dynamic annotations |
-| `api-versions.json` | Active API version inventory for the Users API (v2.1.0) |
-| `component-owners.json` | Validated ownership mapping — all Users Service entities owned by Platform Engineering |
+| `catalog-enriched.yaml` | `catalog-info.yaml` con número de compilación, marca de tiempo de despliegue y anotaciones dinámicas |
+| `api-versions.json` | Inventario de versiones activas de la API para la API de Usuarios (v2.1.0) |
+| `component-owners.json` | Mapeo de propiedad validado — todas las entidades del Servicio de Usuarios son propiedad de Ingeniería de Plataforma |
 
-**Not committed.**
+**No confirmado en el repositorio.**

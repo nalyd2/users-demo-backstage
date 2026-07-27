@@ -1,32 +1,32 @@
-# Coding Standards — Users Service
+# Estándares de Codificación — Users Service
 
-## Scope
+## Alcance
 
-Applies to all C# source code within the `UsersService` solution targeting .NET 10 and C# 13. These standards mirror the Auth Service coding standards with adaptations for the users domain, including entity management, multi-tenancy, and soft-delete patterns.
+Aplica a todo el código fuente C# dentro de la solución `UsersService` orientado a .NET 10 y C# 13. Estos estándares reflejan los estándares de codificación del Auth Service con adaptaciones para el dominio de usuarios, incluyendo gestión de entidades, multi-tenencia y patrones de soft-delete.
 
-## Naming Conventions
+## Convenciones de Nomenclatura
 
-| Category | Convention | Example |
+| Categoría | Convención | Ejemplo |
 |---|---|---|
-| Classes, Records, Structs | PascalCase | `UserService`, `UserProfile`, `TenantContext` |
+| Clases, Records, Structs | PascalCase | `UserService`, `UserProfile`, `TenantContext` |
 | Interfaces | IPascalCase | `IUserRepository`, `ITenantProvider` |
-| Methods, Properties, Events | PascalCase | `CreateUserAsync()`, `IsSoftDeleted` |
-| Private fields | `_camelCase` | `_userRepository`, `_logger` |
-| Private static fields | `s_camelCase` | `s_defaultPageSize` |
-| Local variables, parameters | camelCase | `userProfile`, `createdUser` |
-| Constants | PascalCase | `DefaultPageSize`, `MaxBatchSize` |
+| Métodos, Propiedades, Eventos | PascalCase | `CreateUserAsync()`, `IsSoftDeleted` |
+| Campos privados | `_camelCase` | `_userRepository`, `_logger` |
+| Campos estáticos privados | `s_camelCase` | `s_defaultPageSize` |
+| Variables locales, parámetros | camelCase | `userProfile`, `createdUser` |
+| Constantes | PascalCase | `DefaultPageSize`, `MaxBatchSize` |
 | Static readonly | PascalCase | `ValidRoles`, `SupportedLocales` |
-| Enum members | PascalCase | `UserRole.Admin`, `UserStatus.Active` |
-| Files | Match public type name | `UserService.cs`, `IUserRepository.cs` |
+| Miembros de Enum | PascalCase | `UserRole.Admin`, `UserStatus.Active` |
+| Archivos | Coincidir con el nombre del tipo público | `UserService.cs`, `IUserRepository.cs` |
 
-Prohibited: Hungarian notation, underscores in public members, abbreviations beyond well-known set (`Id`, `Dto`, `Http`, `Json`, `Db`).
+Prohibido: notación húngara, guiones bajos en miembros públicos, abreviaciones más allá del conjunto conocido (`Id`, `Dto`, `Http`, `Json`, `Db`).
 
-## Null Handling
+## Manejo de Nulos
 
-- Nullable reference types enabled globally (`<Nullable>enable</Nullable>`).
-- `ArgumentNullException.ThrowIfNull()` at all public API boundaries.
-- Avoid `null` coalescing for control flow; prefer pattern matching.
-- All service parameters and return types annotated with nullable annotations.
+- Tipos de referencia anulables habilitados globalmente (`<Nullable>enable</Nullable>`).
+- `ArgumentNullException.ThrowIfNull()` en todos los límites de API pública.
+- Evitar coalescencia nula para flujo de control; preferir coincidencia de patrones.
+- Todos los parámetros de servicio y tipos de retorno anotados con anotaciones anulables.
 
 ```csharp
 public Result<UserProfile, Error> UpdateUserProfile(
@@ -37,13 +37,13 @@ public Result<UserProfile, Error> UpdateUserProfile(
 }
 ```
 
-## Async Patterns
+## Patrones Asíncronos
 
-- All I/O methods return `Task<T>` or `ValueTask<T>`.
-- `ConfigureAwait(false)` in library code; not required in controllers.
-- CancellationToken as last parameter in all async I/O methods.
-- `Task.WhenAll` for parallel independent calls.
-- `async void` is prohibited; use `FireAndForgetHandler` for fire-and-forget scenarios.
+- Todos los métodos de E/S devuelven `Task<T>` o `ValueTask<T>`.
+- `ConfigureAwait(false)` en código de librería; no requerido en controladores.
+- CancellationToken como último parámetro en todos los métodos de E/S asíncronos.
+- `Task.WhenAll` para llamadas independientes paralelas.
+- `async void` está prohibido; usar `FireAndForgetHandler` para escenarios de disparar y olvidar.
 
 ```csharp
 public async Task<Result<UserProfile>> GetUserAsync(
@@ -57,36 +57,36 @@ public async Task<Result<UserProfile>> GetUserAsync(
 }
 ```
 
-## Result&lt;T, E&gt; Pattern
+## Patrón Result&lt;T, E&gt;
 
-All service-layer methods return `Result<T, E>` (via FluentResults or similar) rather than throwing exceptions for domain-level failures.
+Todos los métodos de la capa de servicio devuelven `Result<T, E>` (mediante FluentResults o similar) en lugar de lanzar excepciones para fallos a nivel de dominio.
 
 ```csharp
 public async Task<Result<UserProfile, Error>> CreateUserAsync(
     CreateUserRequest request, CancellationToken ct)
 {
-    // Validation
+    // Validación
     if (await _userRepository.EmailExistsAsync(request.Email, ct))
         return new ConflictError("Email already exists");
 
-    // Domain logic
+    // Lógica de dominio
     var user = UserProfile.Create(request.Email, request.FirstName, request.LastName, _tenantProvider.TenantId);
     var created = await _userRepository.AddAsync(user, ct);
 
-    // Event publishing
+    // Publicación de eventos
     await _eventPublisher.PublishAsync(new UserCreatedEvent(created), ct);
 
     return created;
 }
 ```
 
-## Dependency Injection
+## Inyección de Dependencias
 
-- Services registered by interface with scoped or transient lifetimes.
-- `AddDbContextPool<T>` for DbContext registrations.
-- Typed HttpClient pattern for external HTTP calls (Auth Service JWKS, Microsoft Graph).
-- Never inject `IServiceProvider` in application code (Service Locator anti-pattern).
-- All external dependencies must be interfaces for testability.
+- Servicios registrados por interfaz con tiempos de vida scoped o transient.
+- `AddDbContextPool<T>` para registros de DbContext.
+- Patrón HttpClient tipado para llamadas HTTP externas (Auth Service JWKS, Microsoft Graph).
+- Nunca inyectar `IServiceProvider` en código de aplicación (anti-patrón Service Locator).
+- Todas las dependencias externas deben ser interfaces para facilitar pruebas.
 
 ```csharp
 builder.Services.AddScoped<IUserService, UserService>();
@@ -96,12 +96,12 @@ builder.Services.AddPooledDbContextFactory<UsersDbContext>(options =>
     options.UseNpgsql(connectionString));
 ```
 
-## Logging
+## Registro de Logs
 
-- Use `ILogger<T>` with compile-time source generators (`[LoggerMessage]`).
-- Structured JSON logging via Serilog.
-- Never interpolate strings in log calls.
-- Event categories: User Operations (1000-1999), Tenant Operations (2000-2999), Auth Events (3000-3999), Graph API (4000-4999).
+- Usar `ILogger<T>` con generadores de código fuente en tiempo de compilación (`[LoggerMessage]`).
+- Logs estructurados en JSON mediante Serilog.
+- Nunca interpolar cadenas en llamadas de log.
+- Categorías de eventos: Operaciones de Usuario (1000-1999), Operaciones de Inquilino (2000-2999), Eventos de Auth (3000-3999), Graph API (4000-4999).
 
 ```csharp
 public static partial class LogMessages
@@ -116,29 +116,29 @@ public static partial class LogMessages
 }
 ```
 
-## Code Review Checklist
+## Lista de Verificación de Revisión de Código
 
-1. All public methods have XML doc comments.
-2. No TODO or HACK comments survive in production code.
-3. CancellationToken is plumbed through all async call chains.
-4. No magic strings/numbers — use constants or configuration.
-5. Soft-delete queries include the `deleted_at IS NULL` filter.
-6. Tenant isolation is verified for every query (tenant_id filter).
-7. RBAC authorization is validated for every endpoint.
-8. Consumed auth events have idempotency keys.
-9. Published user events include correlation ID for tracing.
-10. Unit tests cover success, error, and edge case paths.
-11. Integration tests include Auth Service JWKS mock for token validation.
+1. Todos los métodos públicos tienen comentarios XML doc.
+2. No hay comentarios TODO o HACK en código de producción.
+3. CancellationToken se propaga a través de todas las cadenas de llamadas asíncronas.
+4. Sin cadenas/números mágicos — usar constantes o configuración.
+5. Las consultas de soft-delete incluyen el filtro `deleted_at IS NULL`.
+6. El aislamiento de inquilino se verifica para cada consulta (filtro tenant_id).
+7. La autorización RBAC se valida para cada endpoint.
+8. Los eventos de auth consumidos tienen claves de idempotencia.
+9. Los eventos de usuario publicados incluyen ID de correlación para trazabilidad.
+10. Las pruebas unitarias cubren rutas de éxito, error y casos límite.
+11. Las pruebas de integración incluyen un mock de JWKS del Auth Service para validación de tokens.
 
-## File Structure
+## Estructura de Archivos
 
 ```
 src/
-  UsersService.Core/          — Domain models, interfaces, enums, value objects
-  UsersService.Application/   — Use cases, DTOs, mappers, validators
-  UsersService.Infrastructure/— Implementations (DB, HTTP (Graph API), event bus)
-  UsersService.Api/           — Controllers, middleware, configuration
-  UsersService.Worker/        — Background services (event consumers, cleanup jobs)
+  UsersService.Core/          — Modelos de dominio, interfaces, enums, objetos de valor
+  UsersService.Application/   — Casos de uso, DTOs, mapeadores, validadores
+  UsersService.Infrastructure/— Implementaciones (DB, HTTP (Graph API), bus de eventos)
+  UsersService.Api/           — Controladores, middleware, configuración
+  UsersService.Worker/        — Servicios en segundo plano (consumidores de eventos, trabajos de limpieza)
 tests/
   UsersService.UnitTests/     — xUnit + NSubstitute
   UsersService.IntegrationTests/ — Testcontainers + WireMock

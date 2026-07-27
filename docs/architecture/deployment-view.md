@@ -1,43 +1,43 @@
-# Deployment View
+# Vista de Despliegue
 
-## Scope
+## Alcance
 
-This document describes the **deployment topology** of the Users Service across Azure regions and the CI/CD pipeline that delivers changes safely to production.
+Este documento describe la **topología de despliegue** del Users Service en las regiones de Azure y el pipeline CI/CD que entrega cambios de forma segura a producción.
 
-## High-Level Deployment Topology
+## Topología de Despliegue de Alto Nivel
 
 ```mermaid
 graph TB
-    subgraph "Azure — West Europe (Primary)"
+    subgraph "Azure — West Europe (Principal)"
         subgraph "AZ-1"
-            users_pod_1["Users Service Pod ×3"]
+            users_pod_1["Pod de Users Service ×3"]
         end
         subgraph "AZ-2"
-            users_pod_2["Users Service Pod ×3"]
+            users_pod_2["Pod de Users Service ×3"]
         end
         subgraph "AZ-3"
-            users_pod_3["Users Service Pod ×3"]
+            users_pod_3["Pod de Users Service ×3"]
         end
-        pg_primary["PostgreSQL 16<br/>Primary (AZ-1)"]
-        pg_standby["PostgreSQL 16<br/>Standby (AZ-2)"]
-        sb_we["Azure Service Bus<br/>Zone-Redundant"]
+        pg_primary["PostgreSQL 16<br/>Principal (AZ-1)"]
+        pg_standby["PostgreSQL 16<br/>Réplica (AZ-2)"]
+        sb_we["Azure Service Bus<br/>Redundante entre Zonas"]
         key_vault_we["Azure Key Vault<br/>West Europe"]
     end
 
-    subgraph "Azure — North Europe (Secondary)"
-        AKS_NE["AKS Cluster"]
-        pg_ne["PostgreSQL 16<br/>Read Replica"]
-        sb_ne["Service Bus<br/>Geo-Recovery"]
+    subgraph "Azure — North Europe (Secundaria)"
+        AKS_NE["Cluster AKS"]
+        pg_ne["PostgreSQL 16<br/>Réplica de Lectura"]
+        sb_ne["Service Bus<br/>Recuperación Geográfica"]
     end
 
-    subgraph "Dependencies"
+    subgraph "Dependencias"
         auth_svc_we["Auth Service<br/>(West Europe)"]
         auth_svc_ne["Auth Service<br/>(North Europe)"]
     end
 
-    subgraph "Global Services"
+    subgraph "Servicios Globales"
         traffic_mgr["Azure Traffic Manager"]
-        acr["Azure Container Registry<br/>Geo-Replicated"]
+        acr["Azure Container Registry<br/>Con Replicación Geográfica"]
     end
 
     traffic_mgr --> users_pod_1
@@ -57,19 +57,19 @@ graph TB
     style acr fill:#0078D4,color:#fff
 ```
 
-## Infrastructure Components
+## Componentes de Infraestructura
 
-### AKS Configuration
+### Configuración de AKS
 
-| Attribute | Detail |
+| Atributo | Detalle |
 |---|---|
-| **Kubernetes Version** | 1.31 |
-| **Node Pools** | 3 AZs × 3 nodes (`Standard_D4s_v5`) |
-| **Autoscaling** | HPA: CPU 70%. Cluster Autoscaler: 3-8 nodes per zone |
-| **Pod Anti-Affinity** | Prefer spread across AZs and nodes |
-| **Service Mesh** | Istio (mTLS, retries, circuit breaking) |
+| **Versión de Kubernetes** | 1.31 |
+| **Pools de Nodos** | 3 AZs × 3 nodos (`Standard_D4s_v5`) |
+| **Autoescalado** | HPA: CPU 70%. Cluster Autoscaler: 3-8 nodos por zona |
+| **Anti-Afinidad de Pods** | Preferir distribución entre AZs y nodos |
+| **Service Mesh** | Istio (mTLS, reintentos, circuit breaking) |
 
-**Pod Configuration:**
+**Configuración del Pod:**
 
 ```yaml
 apiVersion: apps/v1
@@ -108,38 +108,38 @@ spec:
             periodSeconds: 15
 ```
 
-### Critical Dependency: Auth Service
+### Dependencia Crítica: Auth Service
 
-The Users Service has a **hard runtime dependency** on the Authentication Service. The deployment topology ensures regional affinity:
+El Users Service tiene una **dependencia crítica en tiempo de ejecución** del Authentication Service. La topología de despliegue garantiza afinidad regional:
 
-| Users Service Instance | Auth Service Endpoint | Rationale |
+| Instancia de Users Service | Endpoint de Auth Service | Justificación |
 |---|---|---|
-| West Europe pods | `auth-service.we.platform.svc.cluster.local` | Same-region, low latency (p99 < 10ms) |
-| North Europe pods | `auth-service.ne.platform.svc.cluster.local` | Regional failover only |
+| Pods de West Europe | `auth-service.we.platform.svc.cluster.local` | Misma región, baja latencia (p99 < 10ms) |
+| Pods de North Europe | `auth-service.ne.platform.svc.cluster.local` | Solo para conmutación por error regional |
 
-**Degradation Path:**
+**Ruta de Degradación:**
 
 ```
-Auth Service healthy → gRPC validation (p99 < 10ms)
-Auth Service degraded → local JWKS cache (p99 < 1ms, 5 min TTL)
-Auth Service down < 5 min → JWKS cache still valid
-Auth Service down > 5 min → 503 Service Unavailable for authenticated endpoints
-                            (public health endpoint still works)
+Auth Service saludable → validación gRPC (p99 < 10ms)
+Auth Service degradado → caché JWKS local (p99 < 1ms, TTL 5 min)
+Auth Service caído < 5 min → caché JWKS aún válida
+Auth Service caído > 5 min → 503 Service Unavailable para endpoints autenticados
+                            (el endpoint público de salud sigue funcionando)
 ```
 
-### Database Topology
+### Topología de Base de Datos
 
-| Component | Configuration |
+| Componente | Configuración |
 |---|---|
-| **Primary** | West Europe, AZ-1, 4 vCores, 16 GB, 256 GB |
-| **Standby** | West Europe, AZ-2, synchronous replication |
-| **Read Replica** | North Europe, async (< 1 sec lag) |
-| **Tenant Isolation** | Row-Level Security (RLS) policies on `tenant_id` |
+| **Principal** | West Europe, AZ-1, 4 vCores, 16 GB, 256 GB |
+| **Réplica** | West Europe, AZ-2, replicación síncrona |
+| **Réplica de Lectura** | North Europe, asíncrona (< 1 seg de retraso) |
+| **Aislamiento de Tenant** | Políticas de Seguridad a Nivel de Fila (RLS) en `tenant_id` |
 
-### Event Consumer Configuration
+### Configuración del Event Consumer
 
 ```yaml
-# Subscription: users-service on auth-events topic
+# Suscripción: users-service en el tópico auth-events
 rules:
   - name: UserLogin
     filter: "event_type = 'user.login'"
@@ -149,43 +149,43 @@ rules:
     filter: "event_type = 'token.revoked'"
 ```
 
-**Scaling considerations:**
-- Max 10 concurrent message handlers per pod
-- Sessions enabled for ordered processing per user
-- Prefetch count: 20 messages
+**Consideraciones de escalado:**
+- Máx. 10 manejadores de mensajes concurrentes por pod
+- Sesiones habilitadas para procesamiento ordenado por usuario
+- Recuento de precarga: 20 mensajes
 
-## Environment Strategy
+## Estrategia de Entornos
 
-| Environment | Region | Replicas | Purpose |
+| Entorno | Región | Réplicas | Propósito |
 |---|---|---|---|
-| `dev` | West Europe | 1 | Developer sandbox |
-| `qa` | West Europe | 2 | Integration testing |
-| `staging` | West Europe | 3 | Pre-production validation |
-| `production` | West Europe + North Europe | 9 (3 × 3 zones) | Live traffic |
+| `dev` | West Europe | 1 | Sandbox para desarrolladores |
+| `qa` | West Europe | 2 | Pruebas de integración |
+| `staging` | West Europe | 3 | Validación pre-producción |
+| `production` | West Europe + North Europe | 9 (3 × 3 zonas) | Tráfico en vivo |
 
 ## Health Checks
 
-### Readiness Probe (`GET /api/health/ready`)
+### Sonda de Preparación (Readiness Probe) (`GET /api/health/ready`)
 
-Returns 200 only when:
-- PostgreSQL connection pool has ≥ 1 available connection
-- Auth Service gRPC is reachable (or JWKS cache is valid)
-- Service Bus connection is alive (event publisher)
+Devuelve 200 solo cuando:
+- El pool de conexiones de PostgreSQL tiene ≥ 1 conexión disponible
+- El Auth Service gRPC es accesible (o la caché JWKS es válida)
+- La conexión a Service Bus está activa (publicador de eventos)
 
-### Liveness Probe (`GET /api/health/live`)
+### Sonda de Vida (Liveness Probe) (`GET /api/health/live`)
 
-Returns 200 while the process is alive — no dependency checks.
+Devuelve 200 mientras el proceso esté activo — sin verificaciones de dependencias.
 
-## Observability
+## Observabilidad
 
-Each pod emits:
-- **Metrics** → Prometheus (scraped every 15s)
-- **Traces** → OpenTelemetry Collector sidecar (10% sampling in production)
-- **Logs** → stdout (JSON), aggregated by Filebeat → Elastic
+Cada pod emite:
+- **Métricas** → Prometheus (recolectado cada 15s)
+- **Trazas** → OpenTelemetry Collector sidecar (muestreo del 10% en producción)
+- **Logs** → stdout (JSON), agregados por Filebeat → Elastic
 
-## Related Documents
+## Documentos Relacionados
 
-- [Container View](containers.md)
-- [Deployment Runbook](../runbooks/deployment.md)
-- [Rollback Runbook](../runbooks/rollback.md)
-- [Dependencies](../decisions/dependencies.md)
+- [Vista de Contenedores](containers.md)
+- [Runbook de Despliegue](../runbooks/deployment.md)
+- [Runbook de Rollback](../runbooks/rollback.md)
+- [Dependencias](../decisions/dependencies.md)

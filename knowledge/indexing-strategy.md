@@ -1,42 +1,42 @@
-# Indexing Strategy
+# Estrategia de Indexacion
 
-## What to Index
+## Que Indexar
 
-The following document types are **included** in the AI search index:
+Los siguientes tipos de documentos estan **incluidos** en el indice de busqueda de IA:
 
-| Document Type | Priority | Rationale |
+| Tipo de Documento | Prioridad | Justificacion |
 |---|---|---|
-| Architecture docs (`docs/architecture/`) | **High** | Core knowledge — system design, context, containers, JWT dependency on Auth Service |
-| API Reference (`docs/api/`) | **High** | Frequently queried — endpoint specs for user CRUD, events, configuration variables |
-| Runbooks (`docs/runbooks/`) | **High** | Incident response — critical for operational AI when Users Service degrades |
-| ADRs (`docs/adr/`) | **Medium** | Decision context — useful for understanding why PostgreSQL was chosen over MongoDB, JWT dual validation design |
-| Onboarding (`docs/onboarding/`) | **Medium** | Developer enablement — important for new team members setting up the service |
-| Decisions (`docs/decisions/`) | **Medium** | Policies and standards — RBAC definition, dependency policies, security guidelines |
-| `README.md` (root) | **High** | Entry point — overview, endpoint summary, and quick links for the Users Service |
-| `openapi.yaml` | **Medium** | Structured API spec — queryable by endpoint for user management operations |
-| `catalog-info.yaml` | **Low** | Backstage metadata — ownership, system/domain binding, dependency declarations |
+| Documentos de arquitectura (`docs/architecture/`) | **Alta** | Conocimiento central -- diseno del sistema, contexto, contenedores, dependencia JWT del Servicio de Autenticacion |
+| Referencia de API (`docs/api/`) | **Alta** | Consultados frecuentemente -- especificaciones de endpoints para CRUD de usuarios, eventos, variables de configuracion |
+| Runbooks (`docs/runbooks/`) | **Alta** | Respuesta a incidentes -- critico para IA operativa cuando el Servicio de Usuarios se degrada |
+| ADRs (`docs/adr/`) | **Media** | Contexto de decisiones -- util para entender por que se eligio PostgreSQL sobre MongoDB, diseno de validacion JWT dual |
+| Incorporacion (`docs/onboarding/`) | **Media** | Habilitacion de desarrolladores -- importante para nuevos miembros del equipo que configuran el servicio |
+| Decisiones (`docs/decisions/`) | **Media** | Politicas y estandares -- definicion de RBAC, politicas de dependencias, directrices de seguridad |
+| `README.md` (raiz) | **Alta** | Punto de entrada -- resumen general, resumen de endpoints y enlaces rapidos para el Servicio de Usuarios |
+| `openapi.yaml` | **Media** | Especificacion de API estructurada -- consultable por endpoint para operaciones de gestion de usuarios |
+| `catalog-info.yaml` | **Baja** | Metadatos de Backstage -- propiedad, vinculacion de sistema/dominio, declaraciones de dependencias |
 
-## What NOT to Index
+## Que NO Indexar
 
-| Exclusion | Reason |
+| Excluido | Razon |
 |---|---|
-| `generated/` directory | Already auto-generated; index the source, not the output |
-| `.gitignore`, `.editorconfig` | Tool configuration, not documentation |
-| `LICENSE` | Legal text — no AI retrieval value |
-| `Dockerfile`, `azure-pipelines.yml` | Code-like; can be referenced but not chunked |
-| Source code (`src/`) | Excluded from doc index; code search is a separate system |
-| Test code (`tests/`) | Excluded; not relevant for documentation Q&A |
+| Directorio `generated/` | Ya auto-generado; indexar la fuente, no la salida |
+| `.gitignore`, `.editorconfig` | Configuracion de herramientas, no documentacion |
+| `LICENSE` | Texto legal -- sin valor de recuperacion para IA |
+| `Dockerfile`, `azure-pipelines.yml` | Similares a codigo; pueden referenciarse pero no fragmentarse |
+| Codigo fuente (`src/`) | Excluido del indice de documentacion; la busqueda de codigo es un sistema separado |
+| Codigo de prueba (`tests/`) | Excluido; no relevante para preguntas y respuestas de documentacion |
 
-## Index Freshness
+## Actualizacion del Indice
 
-| Trigger | Action |
+| Disparador | Accion |
 |---|---|
-| Push to `main` branch | Full re-index of changed files |
-| PR merge | Incremental index update |
-| Nightly (02:00 UTC) | Full re-index (catch-up for any missed updates) |
-| Manual trigger | Full re-index via Azure DevOps pipeline |
+| Push a la rama `main` | Re-indexacion completa de archivos modificados |
+| Fusion de PR | Actualizacion incremental del indice |
+| Nocturno (02:00 UTC) | Re-indexacion completa (recuperacion de actualizaciones perdidas) |
+| Disparador manual | Re-indexacion completa mediante pipeline de Azure DevOps |
 
-## Related Documents
+## Documentos Relacionados
 
 - [Chunking](chunking.md)
 - [Document Priority](document-priority.md)

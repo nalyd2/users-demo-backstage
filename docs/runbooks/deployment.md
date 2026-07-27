@@ -1,105 +1,105 @@
-# Deployment Runbook — Users Service
+# Runbook de despliegue -- Users Service
 
-**Document owner:** Platform Engineering Team  
-**Service:** `users-service`  
-**Last updated:** 2026-07-26  
-**Primary contact:** `#platform-eng`  
-**Escalation:** `#platform-sre`
-
----
-
-## Table of Contents
-
-1. [Objective](#1-objective)
-2. [CI/CD Pipeline Overview](#2-cicd-pipeline-overview)
-3. [Blue/Green Deployment Strategy](#3-bluegreen-deployment-strategy)
-4. [Pre-Deployment Checklist](#4-pre-deployment-checklist)
-5. [Deployment Steps](#5-deployment-steps)
-6. [Smoke Tests](#6-smoke-tests)
-7. [Monitoring During Deployment](#7-monitoring-during-deployment)
-8. [Rollback Criteria and Procedure](#8-rollback-criteria-and-procedure)
-9. [Post-Deployment Validation](#9-post-deployment-validation)
-10. [References](#10-references)
+**Propietario del documento:** Equipo de Ingenieria de Plataforma  
+**Servicio:** `users-service`  
+**Ultima actualizacion:** 2026-07-26  
+**Contacto principal:** `#platform-eng`  
+**Escalamiento:** `#platform-sre`
 
 ---
 
-## 1. Objective
+## Tabla de Contenidos
 
-This runbook defines the **repeatable, auditable process** for deploying the Users Service to production. Every deployment follows the same pipeline, gate checks, and rollback criteria. The runbook is the single source of truth for deployment execution; deviations require documented exception and an on-call SRE approval.
-
-**Key principles:**
-
-- **Immutable artifacts** -- Every deployable artifact is built once and promoted through environments without recompilation.
-- **Zero-trust delivery** -- Every step is verified: image signature, vulnerability scan, integration tests, and smoke tests.
-- **Observability-driven** -- Deployment progress is tracked via dashboards, not guesswork.
-- **Automated rollback** -- Rollback must be triggerable within 5 minutes of detecting a bad deployment.
+1. [Objetivo](#1-objetivo)
+2. [Descripcion general del pipeline CI/CD](#2-descripcion-general-del-pipeline-cicd)
+3. [Estrategia de despliegue Blue/Green](#3-estrategia-de-despliegue-bluegreen)
+4. [Lista de verificacion previa al despliegue](#4-lista-de-verificacion-previa-al-despliegue)
+5. [Pasos del despliegue](#5-pasos-del-despliegue)
+6. [Pruebas de humo](#6-pruebas-de-humo)
+7. [Monitoreo durante el despliegue](#7-monitoreo-durante-el-despliegue)
+8. [Criterios y procedimiento de revertir](#8-criterios-y-procedimiento-de-revertir)
+9. [Validacion posterior al despliegue](#9-validacion-posterior-al-despliegue)
+10. [Referencias](#10-referencias)
 
 ---
 
-## 2. CI/CD Pipeline Overview
+## 1. Objetivo
 
-The pipeline is orchestrated by **Azure DevOps Pipelines** (definition ID `101`). Source code, pipeline YAML, and Kubernetes manifests live in the same repository at `dev.azure.com/platform/_git/users-service`.
+Este runbook define el **proceso repetible y auditable** para desplegar el Users Service en produccion. Cada despliegue sigue el mismo pipeline, las mismas compuertas de verificacion y los mismos criterios de revertir. El runbook es la unica fuente de verdad para la ejecucion del despliegue; las desviaciones requieren una excepcion documentada y la aprobacion de un SRE de guardia.
 
-### Pipeline Stages
+**Principios clave:**
+
+- **Artefactos inmutables** -- Cada artefacto desplegable se construye una vez y se promociona a traves de los entornos sin recompilacion.
+- **Entrega de confianza cero** -- Cada paso se verifica: firma de imagen, escaneo de vulnerabilidades, pruebas de integracion y pruebas de humo.
+- **Impulsado por observabilidad** -- El progreso del despliegue se rastrea mediante dashboards, no con suposiciones.
+- **Revertir automatizado** -- La revertir debe poder activarse dentro de los 5 minutos posteriores a la deteccion de un despliegue defectuoso.
+
+---
+
+## 2. Descripcion general del pipeline CI/CD
+
+El pipeline es orquestado por **Azure DevOps Pipelines** (ID de definicion `101`). El codigo fuente, el YAML del pipeline y los manifiestos de Kubernetes residen en el mismo repositorio en `dev.azure.com/platform/_git/users-service`.
+
+### Etapas del pipeline
 
 ```mermaid
 graph LR
-    subgraph "Commit & Build"
-        A[Push to main] --> B[Restore + Build]
-        B --> C[Unit Tests]
-        C --> D[SonarQube Analysis]
-        D --> E[Container Build & Sign]
+    subgraph "Commit y compilacion"
+        A[Push a main] --> B[Restaurar + Compilar]
+        B --> C[Pruebas unitarias]
+        C --> D[Analisis SonarQube]
+        D --> E[Compilacion y firma de contenedor]
     end
 
-    subgraph "Validation"
-        E --> F[Vulnerability Scan]
-        F --> G[Integration Tests]
-        G --> H[Push to ACR]
+    subgraph "Validacion"
+        E --> F[Escaneo de vulnerabilidades]
+        F --> G[Pruebas de integracion]
+        G --> H[Push a ACR]
     end
 
-    subgraph "Environments"
-        H --> I[Deploy dev]
-        I --> J[Dev Smoke Tests]
-        J --> K[Deploy qa]
-        K --> L[QA Smoke Tests]
-        L --> M[Deploy staging]
-        M --> N[Staging Smoke Tests]
+    subgraph "Entornos"
+        H --> I[Desplegar dev]
+        I --> J[Pruebas de humo dev]
+        J --> K[Desplegar qa]
+        K --> L[Pruebas de humo qa]
+        L --> M[Desplegar staging]
+        M --> N[Pruebas de humo staging]
     end
 
-    subgraph "Production Gate"
-        N --> O[Get-Approval]
-        O --> P[Deploy production<br/>blue-green]
-        P --> Q[Production Smoke Tests]
+    subgraph "Compuerta de produccion"
+        N --> O[Obtener aprobacion]
+        O --> P[Desplegar produccion<br/>blue-green]
+        P --> Q[Pruebas de humo produccion]
     end
 ```
 
-### Stage Details
+### Detalles de las etapas
 
-| Stage | Trigger | Approvals | Estimated Duration | Failure Action |
+| Etapa | Disparador | Aprobaciones | Duracion estimada | Accion ante fallo |
 |---|---|---|---|---|
-| **Build** | Push to `main`, PR merge | None | 4 min | Fix and recommit |
-| **Security Scan** | Build complete | None | 2 min | Block promotion |
-| **Integration Tests** | Scan passes | None | 6 min | Block promotion |
-| **Deploy: dev** | Tests pass | None | 2 min | Fix and recommit |
-| **Deploy: qa** | Dev smoke tests pass | None | 2 min | Fix and recommit |
-| **Deploy: staging** | QA smoke tests pass | Env. owner | 3 min | Fix and recommit |
-| **Deploy: production** | Staging smoke tests pass | Tech lead + SRE | 5 min | Rollback |
-| **Deploy: DR (NE)** | Production smoke tests pass | SRE | 3 min | Rollback DR |
+| **Compilacion** | Push a `main`, fusion de PR | Ninguna | 4 min | Corregir y reenviar commit |
+| **Escaneo de seguridad** | Compilacion completa | Ninguna | 2 min | Bloquear promocion |
+| **Pruebas de integracion** | Escaneo aprobado | Ninguna | 6 min | Bloquear promocion |
+| **Desplegar: dev** | Pruebas aprobadas | Ninguna | 2 min | Corregir y reenviar commit |
+| **Desplegar: qa** | Pruebas de humo dev aprobadas | Ninguna | 2 min | Corregir y reenviar commit |
+| **Desplegar: staging** | Pruebas de humo qa aprobadas | Propietario del entorno | 3 min | Corregir y reenviar commit |
+| **Desplegar: produccion** | Pruebas de humo staging aprobadas | Lider tecnico + SRE | 5 min | Revertir |
+| **Desplegar: DR (NE)** | Pruebas de humo produccion aprobadas | SRE | 3 min | Revertir DR |
 
-### Build Artifacts
+### Artefactos de compilacion
 
-Each successful build produces:
+Cada compilacion exitosa produce:
 
-| Artifact | Location | Retention |
+| Artefacto | Ubicacion | Retencion |
 |---|---|---|
-| Container image | `acrplatform.azurecr.io/users-service:{semver}` | 90 days |
-| Signed digest (Cosign) | Same ACR repository | 90 days |
-| SBOM (CycloneDX) | ACR + pipeline artifact | 90 days |
-| Kubernetes manifests | Pipeline artifact `k8s-manifests` | 90 days |
-| OpenAPI spec | Pipeline artifact `openapi-spec` | 90 days |
-| Test results | Pipeline artifact `test-results` | 30 days |
+| Imagen de contenedor | `acrplatform.azurecr.io/users-service:{semver}` | 90 dias |
+| Digest firmado (Cosign) | Mismo repositorio ACR | 90 dias |
+| SBOM (CycloneDX) | ACR + artefacto del pipeline | 90 dias |
+| Manifiestos de Kubernetes | Artefacto del pipeline `k8s-manifests` | 90 dias |
+| Especificacion OpenAPI | Artefacto del pipeline `openapi-spec` | 90 dias |
+| Resultados de pruebas | Artefacto del pipeline `test-results` | 30 dias |
 
-**Image naming convention:**
+**Convencion de nomenclatura de imagenes:**
 
 ```
 acrplatform.azurecr.io/users-service:<major>.<minor>.<patch>[-prerelease]
@@ -107,12 +107,12 @@ acrplatform.azurecr.io/users-service:2.1.0
 acrplatform.azurecr.io/users-service:2.1.1-rc.1
 ```
 
-The `latest` tag is never used in production deployments -- every deploy references an immutable semver tag.
+La etiqueta `latest` nunca se usa en despliegues de produccion -- cada despliegue referencia una etiqueta semver inmutable.
 
-### Pipeline YAML (Simplified)
+### YAML del pipeline (simplificado)
 
 ```yaml
-# azure-pipelines.yml (conceptual structure)
+# azure-pipelines.yml (estructura conceptual)
 trigger:
   branches:
     include:
@@ -130,13 +130,13 @@ stages:
       - job: BuildAndTest
         steps:
           - task: DotNetCoreCLI@2
-            displayName: Restore
+            displayName: Restaurar
             inputs: { command: restore }
           - task: DotNetCoreCLI@2
-            displayName: Build
+            displayName: Compilar
             inputs: { command: build }
           - task: DotNetCoreCLI@2
-            displayName: Unit Tests
+            displayName: Pruebas unitarias
             inputs:
               command: test
               arguments: --configuration Release --collect:"Code Coverage"
@@ -146,7 +146,7 @@ stages:
       - job: TrivyScan
         steps:
           - task: CmdLine@2
-            displayName: Trivy Scan
+            displayName: Escaneo Trivy
             inputs:
               script: trivy image --severity CRITICAL,HIGH --exit-code 1 ...
   - stage: BuildImage
@@ -155,7 +155,7 @@ stages:
       - job: DockerBuild
         steps:
           - task: Docker@2
-            displayName: Build and Push
+            displayName: Compilar y subir
             inputs:
               command: buildAndPush
               tags: $(Build.BuildNumber)
@@ -167,24 +167,24 @@ stages:
 
 ---
 
-## 3. Blue/Green Deployment Strategy
+## 3. Estrategia de despliegue Blue/Green
 
-### Rationale
+### Justificacion
 
-The Users Service runs on **Azure Kubernetes Service (AKS)** with **Istio** service mesh. Blue/green deployment eliminates downtime and provides instant rollback by switching traffic between two identical environments.
+El Users Service se ejecuta en **Azure Kubernetes Service (AKS)** con la malla de servicios **Istio**. El despliegue blue/green elimina el tiempo de inactividad y proporciona revertir instantanea al cambiar el trafico entre dos entornos identicos.
 
-### Architecture
+### Arquitectura
 
 ```mermaid
 graph TB
-    subgraph "AKS Cluster"
-        subgraph "Blue (Current)"
+    subgraph "Cluster AKS"
+        subgraph "Blue (Actual)"
             B_Pods["users-service-blue<br/>replicas: 3"]
-            B_Svc["Service (stable)"]
+            B_Svc["Service (estable)"]
         end
-        subgraph "Green (Incoming)"
+        subgraph "Green (Entrante)"
             G_Pods["users-service-green<br/>replicas: 3"]
-            G_Svc["Service (candidate)"]
+            G_Svc["Service (candidato)"]
         end
         VS["VirtualService<br/>(Istio Gateway)"]
     end
@@ -199,19 +199,19 @@ graph TB
     style G_Svc fill:#FF9800,color:#fff
 ```
 
-### Traffic Switch
+### Cambio de trafico
 
-| Phase | Blue | Green | Traffic Split |
+| Fase | Blue | Green | Division de trafico |
 |---|---|---|---|
-| **Steady state** | Serving `v1` (stable) | Idle (previous version) | 100% Blue |
-| **Deploy starts** | Serving `v1` (stable) | Deploying `v2` | 100% Blue |
-| **Green ready** | Serving `v1` (stable) | Serving `v2` (candidate) | 100% Blue |
-| **Smoke tests** | Serving `v1` (stable) | Serving `v2` (candidate) | 100% Blue; smoke tests target Green directly via header |
-| **Cutover** | Serving `v1` (stable) | Serving `v2` (stable) | 100% Green |
-| **Observation** | Idle (kept for rollback) | Serving `v2` (stable) | 100% Green |
-| **Finalize** | Scaled to 0 | Serving `v2` (stable) | 100% Green |
+| **Estado estable** | Sirviendo `v1` (estable) | Inactivo (version anterior) | 100% Blue |
+| **Despliegue inicia** | Sirviendo `v1` (estable) | Desplegando `v2` | 100% Blue |
+| **Green listo** | Sirviendo `v1` (estable) | Sirviendo `v2` (candidato) | 100% Blue |
+| **Pruebas de humo** | Sirviendo `v1` (estable) | Sirviendo `v2` (candidato) | 100% Blue; pruebas de humo apuntan a Green directamente mediante cabecera |
+| **Conmutacion** | Sirviendo `v1` (estable) | Sirviendo `v2` (estable) | 100% Green |
+| **Observacion** | Inactivo (conservado para revertir) | Sirviendo `v2` (estable) | 100% Green |
+| **Finalizar** | Escalado a 0 | Sirviendo `v2` (estable) | 100% Green |
 
-### Istio VirtualService Configuration
+### Configuracion de Istio VirtualService
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -234,170 +234,170 @@ spec:
               number: 7201
     - route:
         - destination:
-            host: users-service-green   # after cutover: primary becomes green
+            host: users-service-green   # despues de la conmutacion: primario se convierte en green
             weight: 100
-          # previous primary (blue) stays available but receives 0 weight
+          # el primario anterior (blue) permanece disponible pero recibe peso 0
 ```
 
-### Key Design Decisions
+### Decisiones de diseno clave
 
-1. **Canary header routing** -- Smoke tests and monitoring probes use `x-deploy-canary: true` to hit the green environment before any production traffic is shifted.
-2. **Database compatibility** -- Both blue and green point to the same PostgreSQL primary. Schema migrations must be backward-compatible (see [Pre-Deployment Checklist](#4-pre-deployment-checklist)).
-3. **Job-based cleanup** -- After the 30-minute observation window, a Kubernetes `CronJob` or pipeline task scales the blue deployment to 0 replicas via `kubectl scale deployment/users-service-blue --replicas=0`.
+1. **Enrutamiento por cabecera canary** -- Las pruebas de humo y las sondas de monitoreo usan `x-deploy-canary: true` para alcanzar el entorno green antes de que se desvie cualquier trafico de produccion.
+2. **Compatibilidad de base de datos** -- Tanto blue como green apuntan al mismo PostgreSQL primario. Las migraciones de esquema deben ser compatibles hacia atras (ver [Lista de verificacion previa al despliegue](#4-lista-de-verificacion-previa-al-despliegue)).
+3. **Limpieza basada en trabajos** -- Despues de la ventana de observacion de 30 minutos, un `CronJob` de Kubernetes o tarea del pipeline escala el despliegue blue a 0 replicas mediante `kubectl scale deployment/users-service-blue --replicas=0`.
 
 ---
 
-## 4. Pre-Deployment Checklist
+## 4. Lista de verificacion previa al despliegue
 
-Every item must be verified before the production deployment proceeds. Use this checklist as a manual gate or automate it as a pipeline validation step.
+Cada elemento debe verificarse antes de que el despliegue de produccion proceda. Use esta lista como compuerta manual o automatice como paso de validacion del pipeline.
 
-### 4.1 Code and Artifact Readiness
+### 4.1 Preparacion del codigo y artefactos
 
-| # | Item | Verification | Owner |
+| # | Elemento | Verificacion | Propietario |
 |---|---|---|---|
-| 1 | All PRs merged to `main` with required approvals | Pipeline enforces branch policy | Developer |
-| 2 | Build pipeline succeeded on the target commit | Pipeline dashboard green | CI/CD |
-| 3 | Container image signed with Cosign | `cosign verify acrplatform.azurecr.io/users-service:<version>` | CI/CD |
-| 4 | Vulnerability scan passed (no CRITICAL or HIGH unapproved) | Trivy report in pipeline artifacts | Security |
-| 5 | SBOM generated and published | CycloneDX artifact present | CI/CD |
-| 6 | Integration tests passed on the same image | Test report shows 100% pass | QA |
-| 7 | Staging deployment smoke tests passed | Last staging run green | QA |
+| 1 | Todos los PR fusionados a `main` con las aprobaciones requeridas | El pipeline aplica la politica de rama | Desarrollador |
+| 2 | Pipeline de compilacion exitoso en el commit objetivo | Dashboard del pipeline en verde | CI/CD |
+| 3 | Imagen de contenedor firmada con Cosign | `cosign verify acrplatform.azurecr.io/users-service:<version>` | CI/CD |
+| 4 | Escaneo de vulnerabilidades aprobado (sin CRITICAL o HIGH no aprobados) | Informe Trivy en artefactos del pipeline | Seguridad |
+| 5 | SBOM generado y publicado | Artefacto CycloneDX presente | CI/CD |
+| 6 | Pruebas de integracion aprobadas en la misma imagen | Informe de pruebas muestra 100% de aprobacion | QA |
+| 7 | Pruebas de humo del despliegue en staging aprobadas | Ultima ejecucion de staging en verde | QA |
 
-### 4.2 Schema and Data Readiness
+### 4.2 Preparacion del esquema y datos
 
-| # | Item | Verification | Owner |
+| # | Elemento | Verificacion | Propietario |
 |---|---|---|---|
-| 8 | Database migration script reviewed and approved | PR approved by team lead | DBA / Developer |
-| 9 | Migration is backward-compatible (no destructive DDL, no NOT NULL on existing columns without default) | Script reviewed | DBA |
-| 10 | Rollback migration exists and is tested | `migrations/rollback/` directory | Developer |
-| 11 | Migration run in staging and verified | Staging schema matches expected | Developer |
-| 12 | Any `EXCLUSIVE`-mode migrations scheduled during maintenance window | See [Maintenance Windows](#appendix-b-maintenance-windows) | SRE |
+| 8 | Script de migracion de base de datos revisado y aprobado | PR aprobado por el lider del equipo | DBA / Desarrollador |
+| 9 | Migracion compatible hacia atras (sin DDL destructivo, sin NOT NULL en columnas existentes sin valor predeterminado) | Script revisado | DBA |
+| 10 | Migracion de revertir existe y esta probada | Directorio `migrations/rollback/` | Desarrollador |
+| 11 | Migracion ejecutada en staging y verificada | Esquema de staging coincide con lo esperado | Desarrollador |
+| 12 | Cualquier migracion en modo `EXCLUSIVE` programada durante ventana de mantenimiento | Ver [Ventanas de mantenimiento](#apendice-b-ventanas-de-mantenimiento) | SRE |
 
-### 4.3 Infrastructure and Operations Readiness
+### 4.3 Preparacion de infraestructura y operaciones
 
-| # | Item | Verification | Owner |
+| # | Elemento | Verificacion | Propietario |
 |---|---|---|---|
-| 13 | Production AKS cluster healthy (all nodes Ready) | `kubectl get nodes` | SRE |
-| 14 | PostgreSQL primary and standby in sync | Replication lag < 1 second | SRE |
-| 15 | Auth Service healthy and reachable | gRPC health check passes | SRE |
-| 16 | Azure Service Bus queue depth normal (no backlog > 1000) | Azure Monitor | SRE |
-| 17 | Grafana dashboard visible and alerting configured | Dashboard loads | SRE |
-| 18 | PagerDuty on-call schedule confirmed | At least one responder per region | SRE |
-| 19 | Release notes drafted and approved | `docs/releases/<version>.md` | Developer |
-| 20 | Backstage catalog-info.yaml updated (version, links) | PR merged | Developer |
+| 13 | Cluster AKS de produccion saludable (todos los nodos Ready) | `kubectl get nodes` | SRE |
+| 14 | PostgreSQL primario y standby sincronizados | Retraso de replicacion < 1 segundo | SRE |
+| 15 | Auth Service saludable y accesible | Verificacion de salud gRPC exitosa | SRE |
+| 16 | Profundidad de cola de Azure Service Bus normal (sin backlog > 1000) | Azure Monitor | SRE |
+| 17 | Dashboard de Grafana visible y alertas configuradas | Dashboard carga correctamente | SRE |
+| 18 | Horario de guardia de PagerDuty confirmado | Al menos un respondedor por region | SRE |
+| 19 | Notas de version redactadas y aprobadas | `docs/releases/<version>.md` | Desarrollador |
+| 20 | catalog-info.yaml de Backstage actualizado (version, enlaces) | PR fusionado | Desarrollador |
 
-### 4.4 Environment-Specific Configuration Validation
+### 4.4 Validacion de configuracion especifica del entorno
 
 ```bash
-# Pre-deployment verification script (run from pipeline or manually)
+# Script de verificacion previa al despliegue (ejecutar desde el pipeline o manualmente)
 #!/usr/bin/env bash
 set -euo pipefail
 
 IMAGE_TAG="${1:?Usage: $0 <image-tag>}"
 
-echo "=== Pre-Deployment Validation ==="
+echo "=== Validacion previa al despliegue ==="
 
-# 1. Image exists in ACR
-echo "[1/5] Checking image in ACR..."
+# 1. Imagen existe en ACR
+echo "[1/5] Verificando imagen en ACR..."
 az acr repository show-tags \
   --name acrplatform \
   --repository users-service \
   --query "contains(@, '$IMAGE_TAG')" \
-  --output tsv | grep -q true || { echo "FAIL: Image not found"; exit 1; }
+  --output tsv | grep -q true || { echo "FAIL: Imagen no encontrada"; exit 1; }
 
-# 2. Image signed
-echo "[2/5] Verifying Cosign signature..."
+# 2. Imagen firmada
+echo "[2/5] Verificando firma Cosign..."
 cosign verify \
   --key k8s://platform/cosign-public-key \
   "acrplatform.azurecr.io/users-service:${IMAGE_TAG}" > /dev/null 2>&1 \
-  || { echo "FAIL: Signature verification failed"; exit 1; }
+  || { echo "FAIL: Verificacion de firma fallida"; exit 1; }
 
-# 3. AKS cluster reachable
-echo "[3/5] Checking AKS connectivity..."
+# 3. Cluster AKS accesible
+echo "[3/5] Verificando conectividad AKS..."
 kubectl cluster-info > /dev/null 2>&1 \
-  || { echo "FAIL: Cannot connect to AKS"; exit 1; }
+  || { echo "FAIL: No se puede conectar a AKS"; exit 1; }
 
-# 4. PostgreSQL reachable
-echo "[4/5] Checking PostgreSQL..."
+# 4. PostgreSQL accesible
+echo "[4/5] Verificando PostgreSQL..."
 kubectl run db-check --rm -it --restart=Never \
   --image postgres:16 \
   -- psql "$(kubectl get secret users-db-connection -o jsonpath='{.data.value}' | base64 -d)" \
   -c "SELECT 1" > /dev/null 2>&1 \
-  || { echo "FAIL: Database unreachable"; exit 1; }
+  || { echo "FAIL: Base de datos inaccesible"; exit 1; }
 
-# 5. Auth Service reachable from the cluster
-echo "[5/5] Checking Auth Service..."
+# 5. Auth Service accesible desde el cluster
+echo "[5/5] Verificando Auth Service..."
 kubectl run auth-check --rm -it --restart=Never \
   --image curlimages/curl:latest \
   -- curl -sf --connect-timeout 5 \
   https://auth-service.platform.svc.cluster.local:5103/api/health/live \
   > /dev/null 2>&1 \
-  || { echo "WARN: Auth Service health check failed (JWKS cache will be used)"; }
+  || { echo "WARN: Verificacion de salud de Auth Service fallida (se usara la cache JWKS)"; }
 
-echo "=== Pre-Deployment Validation Complete ==="
+echo "=== Validacion previa al despliegue completada ==="
 ```
 
-### 4.5 Approval Gates
+### 4.5 Compuertas de aprobacion
 
-| Environment | Approver(s) | Method | SLA |
+| Entorno | Aprobador(es) | Metodo | SLA |
 |---|---|---|---|
-| Dev | (Auto) | Pipeline | -- |
-| QA | (Auto) | Pipeline | -- |
-| Staging | Environment owner (Platform Eng) | Azure DevOps approval | < 1 hour |
-| Production | Tech lead + SRE on-call | Azure DevOps approval + Slack confirmation | < 2 hours |
-| DR region | SRE on-call | Auto after production smoke tests pass | -- |
+| Dev | (Automatico) | Pipeline | -- |
+| QA | (Automatico) | Pipeline | -- |
+| Staging | Propietario del entorno (Platform Eng) | Aprobacion de Azure DevOps | < 1 hora |
+| Produccion | Lider tecnico + SRE de guardia | Aprobacion de Azure DevOps + confirmacion en Slack | < 2 horas |
+| Region DR | SRE de guardia | Automatico despues de pruebas de humo de produccion | -- |
 
 ---
 
-## 5. Deployment Steps
+## 5. Pasos del despliegue
 
-### 5.1 Step 1: Schema Migration
+### 5.1 Paso 1: Migracion de esquema
 
-Database migrations are run **before** the green deployment is created. This ensures both blue and green are compatible with the same schema.
+Las migraciones de base de datos se ejecutan **antes** de que se cree el despliegue green. Esto asegura que tanto blue como green sean compatibles con el mismo esquema.
 
 ```bash
-# Run via Kubernetes Job (idempotent, can be re-run safely)
+# Ejecutar mediante trabajo de Kubernetes (idempotente, se puede re-ejecutar de forma segura)
 kubectl apply -f k8s/manifests/jobs/db-migrate.yaml
 
-# Monitor migration
+# Monitorear la migracion
 kubectl logs -l job-name=users-db-migrate -n platform --tail=50 -f
 
-# Expected output:
+# Salida esperada:
 # [INFO] Applying migration V2_1_1__add_department_index.sql
 # [INFO] Migration successful: V2_1_1
 # [INFO] Current schema version: 2.1.1
 ```
 
-**If migration fails:**
+**Si la migracion falla:**
 
-1. Check logs for the specific SQL error.
-2. If the error is transient (connection timeout), retry the job: `kubectl delete job users-db-migrate -n platform && kubectl apply -f k8s/manifests/jobs/db-migrate.yaml`.
-3. If the error is a logic error (constraint violation, syntax), abort the deployment and roll back the migration immediately using the rollback migration script.
+1. Verificar los logs para el error SQL especifico.
+2. Si el error es transitorio (timeout de conexion), reintentar el trabajo: `kubectl delete job users-db-migrate -n platform && kubectl apply -f k8s/manifests/jobs/db-migrate.yaml`.
+3. Si el error es logico (violacion de restriccion, sintaxis), abortar el despliegue y revertir la migracion inmediatamente usando el script de migracion de revertir.
 
-**Migration must be backward-compatible.** The blue deployment continues serving the old version throughout the migration.
+**La migracion debe ser compatible hacia atras.** El despliegue blue continua sirviendo la version antigua durante toda la migracion.
 
-### 5.2 Step 2: Deploy Green Environment
+### 5.2 Paso 2: Desplegar entorno Green
 
 ```bash
-# Apply the green deployment manifest
+# Aplicar el manifiesto de despliegue green
 kubectl apply -f k8s/manifests/deployments/green.yaml
 
-# Verify pods start
+# Verificar que los pods se inicien
 kubectl rollout status deployment/users-service-green -n platform --timeout=180s
 
-# Expected output:
+# Salida esperada:
 # deployment "users-service-green" successfully rolled out
 ```
 
-The green deployment manifest references the new image tag (`2.1.1`) and uses identical resource requests, probes, and environment configuration as the current blue deployment, except for the image version.
+El manifiesto de despliegue green referencia la nueva etiqueta de imagen (`2.1.1`) y utiliza solicitudes de recursos, sondas y configuracion de entorno identicas al despliegue blue actual, excepto por la version de la imagen.
 
-**Probe expectations:**
+**Expectativas de las sondas:**
 
-- **Readiness probe** (`/api/health/ready`): Must return 200 within 15 seconds of pod start.
-- **Liveness probe** (`/api/health/live`): Must return 200 within 30 seconds.
+- **Sonda de readiness** (`/api/health/ready`): Debe devolver 200 dentro de los 15 segundos posteriores al inicio del pod.
+- **Sonda de liveness** (`/api/health/live`): Debe devolver 200 dentro de los 30 segundos.
 
 ```yaml
-# k8s/manifests/deployments/green.yaml (relevant excerpt)
+# k8s/manifests/deployments/green.yaml (extracto relevante)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -423,25 +423,25 @@ spec:
           env:
             - name: ImageTag
               value: "2.1.1"
-          # ... probes and resources match blue exactly
+          # ... sondas y recursos coinciden exactamente con blue
 ```
 
-### 5.3 Step 3: Smoke Tests Against Green
+### 5.3 Paso 3: Pruebas de humo contra Green
 
-With the green pods running and passing their readiness probes, direct smoke tests against the green service using the canary header. No production traffic is affected yet.
+Con los pods green ejecutandose y pasando sus sondas de readiness, dirigir las pruebas de humo contra el servicio green utilizando la cabecera canary. El trafico de produccion no se ve afectado aun.
 
 ```bash
-# Smoke test via Istio canary header (hits green only)
+# Prueba de humo mediante cabecera canary de Istio (impacta solo a green)
 curl -s -H "x-deploy-canary: true" \
   https://users.internal.platform/api/health/ready | jq .
 ```
 
-See [Section 6 -- Smoke Tests](#6-smoke-tests) for the full smoke test suite.
+Ver la [Seccion 6 -- Pruebas de humo](#6-pruebas-de-humo) para el conjunto completo de pruebas de humo.
 
-### 5.4 Step 4: Database Migration Verification
+### 5.4 Paso 4: Verificacion de la migracion de base de datos
 
 ```bash
-# Verify the new schema is applied correctly
+# Verificar que el nuevo esquema se haya aplicado correctamente
 kubectl run schema-check --rm -it --restart=Never \
   --image postgres:16 -- psql "$(kubectl get secret users-db-connection -o jsonpath='{.data.value}' | base64 -d)" \
   -c "
@@ -452,179 +452,179 @@ kubectl run schema-check --rm -it --restart=Never \
   "
 ```
 
-Expected: The latest migration (corresponding to the deployed version) appears at the top with a recent `applied_at` timestamp.
+Esperado: La migracion mas reciente (correspondiente a la version desplegada) aparece en la parte superior con una marca de tiempo `applied_at` reciente.
 
-### 5.5 Step 5: Cut Traffic to Green
+### 5.5 Paso 5: Conmutar trafico a Green
 
-Update the Istio VirtualService to route 100% of production traffic to the green deployment.
+Actualizar el Istio VirtualService para enrutar el 100% del trafico de produccion al despliegue green.
 
 ```bash
-# Apply the cutover VirtualService
+# Aplicar el VirtualService de conmutacion
 kubectl apply -f k8s/manifests/istio/virtualservice-green.yaml
 
-# Monitor traffic shift (watch Grafana dashboard)
-# Expected: Error rate stable, p99 latency within baseline
+# Monitorear el cambio de trafico (ver dashboard de Grafana)
+# Esperado: Tasa de error estable, latencia p99 dentro de la linea base
 ```
 
-The cutover is **instant** -- Istio updates its routing rules within seconds.
+La conmutacion es **instantanea** -- Istio actualiza sus reglas de enrutamiento en segundos.
 
-### 5.6 Step 6: Observation Window (30 Minutes)
+### 5.6 Paso 6: Ventana de observacion (30 minutos)
 
-During this period:
+Durante este periodo:
 
-- **Both blue and green deployments remain running** at full replica count.
-- **100% of traffic goes to green** (the new version).
-- **Metrics are continuously monitored** (see [Section 7](#7-monitoring-during-deployment)).
-- **No new deployments** are initiated during this window.
-- **The SRE on-call** acknowledges the deployment in `#platform-eng`.
+- **Ambos despliegues blue y green permanecen ejecutandose** con el numero completo de replicas.
+- **El 100% del trafico va a green** (la nueva version).
+- **Las metricas se monitorean continuamente** (ver [Seccion 7](#7-monitoreo-durante-el-despliegue)).
+- **No se inician nuevos despliegues** durante esta ventana.
+- **El SRE de guardia** confirma el despliegue en `#platform-eng`.
 
-If any [rollback criteria](#8-rollback-criteria-and-procedure) are triggered during this window, execute [Rollback Procedure](#82-rollback-procedure).
+Si algun [criterio de revertir](#8-criterios-y-procedimiento-de-revertir) se activa durante esta ventana, ejecutar el [Procedimiento de revertir](#82-procedimiento-de-revertir).
 
-### 5.7 Step 7: Finalize
+### 5.7 Paso 7: Finalizar
 
-If the observation window passes without incident:
+Si la ventana de observacion transcurre sin incidentes:
 
 ```bash
-# 1. Scale down blue deployment to 0
+# 1. Reducir escala del despliegue blue a 0
 kubectl scale deployment/users-service-blue -n platform --replicas=0
 
-# 2. Tag the release in git
+# 2. Etiquetar la version en git
 git tag -a "v2.1.1" -m "Release v2.1.1"
 git push origin v2.1.1
 
-# 3. Update Backstage catalog
-# (catalog-info.yaml already updated in PR; verify sync)
+# 3. Actualizar el catalogo de Backstage
+# (catalog-info.yaml ya actualizado en PR; verificar sincronizacion)
 
-# 4. Post release notes to #platform-eng
-echo "Deployment v2.1.1 complete. Blue scaled to 0. Observation window passed."
+# 4. Publicar notas de version en #platform-eng
+echo "Despliegue v2.1.1 completado. Blue escalado a 0. Ventana de observacion superada."
 ```
 
 ---
 
-## 6. Smoke Tests
+## 6. Pruebas de humo
 
-Smoke tests execute against the **green** deployment (via `x-deploy-canary: true`) before any production traffic is shifted. They validate that the new version is functional, secure, and integrated.
+Las pruebas de humo se ejecutan contra el despliegue **green** (mediante `x-deploy-canary: true`) antes de que se desvie cualquier trafico de produccion. Validan que la nueva version sea funcional, segura e integrada.
 
-### 6.1 Health and Liveness Tests
+### 6.1 Pruebas de salud y liveness
 
 ```bash
 #!/usr/bin/env bash
-# smoke-tests.sh — return non-zero on any failure
+# smoke-tests.sh — devuelve codigo no cero ante cualquier fallo
 set -euo pipefail
 
 BASE_URL="${1:?Usage: $0 <base-url>}"
 CANARY_HEADER="-H x-deploy-canary: true"
 
-echo "=== Smoke Tests for users-service ==="
+echo "=== Pruebas de humo para users-service ==="
 
-# Test 1: Liveness probe
-echo "[1/9] Liveness probe..."
+# Prueba 1: Sonda de liveness
+echo "[1/9] Sonda de liveness..."
 curl -sf ${CANARY_HEADER} "${BASE_URL}/api/health/live" | jq -e '.status == "alive"' > /dev/null
 echo "  PASS"
 
-# Test 2: Readiness probe
-echo "[2/9] Readiness probe..."
+# Prueba 2: Sonda de readiness
+echo "[2/9] Sonda de readiness..."
 curl -sf ${CANARY_HEADER} "${BASE_URL}/api/health/ready" | jq -e '.status == "ready"' > /dev/null
 echo "  PASS"
 
-# Test 3: Unauthenticated access returns 401
-echo "[3/9] Unauthenticated request returns 401..."
+# Prueba 3: Acceso no autenticado devuelve 401
+echo "[3/9] Solicitud no autenticada devuelve 401..."
 response_code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/users")
 [ "$response_code" = "401" ]
-echo "  PASS (got 401)"
+echo "  PASS (se obtuvo 401)"
 
-# Test 4: Authenticated request succeeds with valid JWT
-echo "[4/9] Authenticated request (admin token)..."
+# Prueba 4: Solicitud autenticada exitosa con JWT valido
+echo "[4/9] Solicitud autenticada (token de administrador)..."
 curl -sf ${CANARY_HEADER} \
   -H "Authorization: Bearer ${ADMIN_JWT}" \
   "${BASE_URL}/api/users?pageSize=1" | jq -e '.data != null' > /dev/null
 echo "  PASS"
 
-# Test 5: Non-admin user cannot list all users
-echo "[5/9] RBAC: user role cannot list all users..."
+# Prueba 5: Usuario no administrador no puede listar todos los usuarios
+echo "[5/9] RBAC: rol de usuario no puede listar todos los usuarios..."
 response_code=$(curl -s -o /dev/null -w "%{http_code}" ${CANARY_HEADER} \
   -H "Authorization: Bearer ${USER_JWT}" \
   "${BASE_URL}/api/users")
 [ "$response_code" = "403" ]
-echo "  PASS (got 403)"
+echo "  PASS (se obtuvo 403)"
 ```
 
-### 6.2 JWT Validation Verification
+### 6.2 Verificacion de validacion JWT
 
-This is the **critical security smoke test**. It verifies that the deployment correctly validates JWTs at the service level (the zero-trust layer).
+Esta es la **prueba de humo de seguridad critica**. Verifica que el despliegue valide correctamente los JWT a nivel de servicio (la capa de confianza cero).
 
 ```bash
-# Test 6: Expired JWT is rejected
-echo "[6/9] Expired JWT..."
+# Prueba 6: JWT expirado es rechazado
+echo "[6/9] JWT expirado..."
 curl -sf -o /dev/null -w "%{http_code}" ${CANARY_HEADER} \
   -H "Authorization: Bearer ${EXPIRED_JWT}" \
   "${BASE_URL}/api/users"
-# Expected: 401
+# Esperado: 401
 
-# Test 7: JWT with invalid signature is rejected
-echo "[7/9] Invalid signature JWT..."
+# Prueba 7: JWT con firma invalida es rechazado
+echo "[7/9] JWT con firma invalida..."
 curl -sf -o /dev/null -w "%{http_code}" ${CANARY_HEADER} \
   -H "Authorization: Bearer ${INVALID_SIG_JWT}" \
   "${BASE_URL}/api/users"
-# Expected: 401
+# Esperado: 401
 
-# Test 8: JWT with missing tid claim is rejected
-echo "[8/9] JWT missing tenant ID..."
+# Prueba 8: JWT sin claim tid es rechazado
+echo "[8/9] JWT sin ID de inquilino..."
 curl -sf -o /dev/null -w "%{http_code}" ${CANARY_HEADER} \
   -H "Authorization: Bearer ${NO_TENANT_JWT}" \
   "${BASE_URL}/api/users"
-# Expected: 401
+# Esperado: 401
 
-# Test 9: JWT tampered payload is rejected
-echo "[9/9] Tampered JWT payload..."
+# Prueba 9: JWT con payload manipulado es rechazado
+echo "[9/9] JWT con payload manipulado..."
 JWT_TAMPERED=$(echo "${ADMIN_JWT}" | awk -F. '{print $1"."$2".invalidsignature"}')
 curl -sf -o /dev/null -w "%{http_code}" ${CANARY_HEADER} \
   -H "Authorization: Bearer ${JWT_TAMPERED}" \
   "${BASE_URL}/api/users"
-# Expected: 401
+# Esperado: 401
 ```
 
-**JWT test token generation** (for reference):
+**Generacion de tokens JWT de prueba** (como referencia):
 
 ```bash
-# These tokens are pre-generated by the pipeline and stored as pipeline secrets.
-# They are rotated every 30 days.
+# Estos tokens son pre-generados por el pipeline y almacenados como secretos del pipeline.
+# Se rotan cada 30 dias.
 #
-# ADMIN_JWT:    A valid JWT with roles=["admin"] and a valid tid
-# USER_JWT:     A valid JWT with roles=["user"] and a valid tid
-# EXPIRED_JWT:  A JWT signed by the Auth Service with exp set to 1 hour ago
-# INVALID_SIG_JWT: A JWT with a random RSA signature (not from Auth Service)
-# NO_TENANT_JWT:    A valid JWT missing the "tid" claim
+# ADMIN_JWT:    Un JWT valido con roles=["admin"] y un tid valido
+# USER_JWT:     Un JWT valido con roles=["user"] y un tid valido
+# EXPIRED_JWT:  Un JWT firmado por el Auth Service con exp establecido hace 1 hora
+# INVALID_SIG_JWT: Un JWT con una firma RSA aleatoria (no del Auth Service)
+# NO_TENANT_JWT:    Un JWT valido sin el claim "tid"
 ```
 
-### 6.3 Event Consumer Validation
+### 6.3 Validacion del consumidor de eventos
 
 ```bash
-# Test 10: Verify event consumer is processing messages
-echo "[10/10] Event consumer backlog..."
-# Query the green deployment's metrics endpoint
+# Prueba 10: Verificar que el consumidor de eventos esta procesando mensajes
+echo "[10/10] Backlog del consumidor de eventos..."
+# Consultar el endpoint de metricas del despliegue green
 curl -sf ${CANARY_HEADER} \
   "${BASE_URL}/metrics" | grep 'users_events_processed_total' | head -3
-echo "  PASS (events being consumed)"
+echo "  PASS (eventos siendo consumidos)"
 ```
 
-### 6.4 All Tests Pass Condition
+### 6.4 Condicion de aprobacion de todas las pruebas
 
-The deployment pipeline **must not proceed** to the traffic cutover step if any smoke test fails. Additionally, the JWT validation tests (6.2) must pass at `AKS` level (not just the API Gateway), confirming the zero-trust security model is functioning.
+El pipeline de despliegue **no debe proceder** al paso de conmutacion de trafico si falla alguna prueba de humo. Adicionalmente, las pruebas de validacion JWT (6.2) deben pasar a nivel de `AKS` (no solo en la puerta de enlace de API), confirmando que el modelo de seguridad de confianza cero esta funcionando.
 
-### 6.5 Smoke Test Automation in Pipeline
+### 6.5 Automatizacion de pruebas de humo en el pipeline
 
 ```yaml
-# Pipeline snippet
+# Fragmento del pipeline
 - stage: SmokeTests
-  displayName: Smoke Tests (Green)
+  displayName: Pruebas de humo (Green)
   jobs:
     - job: RunSmokeTests
       steps:
         - script: |
             chmod +x scripts/smoke-tests.sh
             ./scripts/smoke-tests.sh "https://users.internal.platform"
-          displayName: Execute Smoke Test Suite
+          displayName: Ejecutar conjunto de pruebas de humo
           env:
             ADMIN_JWT: $(AdminJwt)
             USER_JWT: $(UserJwt)
@@ -632,248 +632,248 @@ The deployment pipeline **must not proceed** to the traffic cutover step if any 
             INVALID_SIG_JWT: $(InvalidSigJwt)
             NO_TENANT_JWT: $(NoTenantJwt)
         - task: PublishTestResults@2
-          displayName: Publish Smoke Test Results
+          displayName: Publicar resultados de pruebas de humo
           condition: succeededOrFailed()
 ```
 
 ---
 
-## 7. Monitoring During Deployment
+## 7. Monitoreo durante el despliegue
 
-### 7.1 Grafana Dashboard
+### 7.1 Dashboard de Grafana
 
-Open the [Users Service Dashboard](https://grafana.internal/d/users/users-service) before starting the deployment. The dashboard is organized into four rows:
+Abrir el [Dashboard de Users Service](https://grafana.internal/d/users/users-service) antes de iniciar el despliegue. El dashboard esta organizado en cuatro filas:
 
-| Row | Panels | Watch For |
+| Fila | Paneles | Vigilar |
 |---|---|---|
-| **Deployment Health** | Pod count (blue/green), rollout progress, restart count | Green pods reach 3/3 Ready within 3 minutes |
-| **Request Rate & Errors** | RPS, HTTP 4xx/5xx rate, p50/p95/p99 latency | Error rate spike above 0.5%, p99 latency above 500ms |
-| **Auth Validation** | Auth Service gRPC duration, JWKS cache hit rate, cache staleness | gRPC failures > 5%; cache hit rate below 90% in steady state |
-| **Database** | Connection pool usage, query duration, replication lag | Connection count approaching pool max (200); replication lag above 2s |
-| **Events** | Consumer lag, processed event rate, dead-letter count | Dead-letter count increasing; lag above 60 seconds |
+| **Salud del despliegue** | Conteo de pods (blue/green), progreso del despliegue, conteo de reinicios | Los pods green alcanzan 3/3 Ready en menos de 3 minutos |
+| **Tasa de solicitudes y errores** | RPS, tasa de HTTP 4xx/5xx, latencia p50/p95/p99 | Pico de tasa de error superior al 0.5%, latencia p99 superior a 500ms |
+| **Validacion de Auth** | Duracion de gRPC de Auth Service, tasa de aciertos de cache JWKS, obsolescencia de cache | Fallos de gRPC > 5%; tasa de aciertos de cache inferior al 90% en estado estable |
+| **Base de datos** | Uso del pool de conexiones, duracion de consultas, retraso de replicacion | Conteo de conexiones acercandose al maximo del pool (200); retraso de replicacion superior a 2s |
+| **Eventos** | Retraso del consumidor, tasa de eventos procesados, conteo de mensajes en cola de mensajes fallidos | Conteo de mensajes fallidos aumentando; retraso superior a 60 segundos |
 
-### 7.2 Key Metrics to Observe
+### 7.2 Metricas clave a observar
 
 ```promql
-# Request error rate (should stay below 0.5%)
+# Tasa de error de solicitudes (debe mantenerse por debajo del 0.5%)
 sum(rate(users_requests_total{status_code=~"5.."}[5m]))
   / sum(rate(users_requests_total[5m]))
   * 100
 
-# p99 latency (baseline ~50ms; alert at 500ms)
+# Latencia p99 (linea base ~50ms; alerta en 500ms)
 histogram_quantile(
   0.99,
   sum(rate(users_operation_duration_seconds_bucket[5m])) by (le)
 )
 
-# Auth validation duration (baseline ~10ms gRPC, ~1ms cache)
+# Duracion de validacion de Auth (linea base ~10ms gRPC, ~1ms cache)
 histogram_quantile(
   0.99,
   rate(users_auth_validation_duration_seconds_bucket[5m])
 )
 
-# Pod restarts (alert if > 0 after initial startup)
+# Reinicios de pods (alertar si > 0 despues del inicio inicial)
 sum(kube_pod_container_status_restarts_total{namespace="platform", pod=~"users-service-green-.*"})
 
-# JWKS cache TTL remaining (should always be > 0 when Auth Service is healthy)
+# TTL restante de cache JWKS (debe ser siempre > 0 cuando Auth Service esta saludable)
 users_jwks_cache_ttl_seconds
 ```
 
-### 7.3 Alerts Automatically Silenced During Deployment
+### 7.3 Alertas silenciadas automaticamente durante el despliegue
 
-The following alerts are automatically muted during the observation window (via Azure DevOps + Azure Monitor webhook integration) to prevent noise from transient deployment artifacts:
+Las siguientes alertas se silencian automaticamente durante la ventana de observacion (mediante la integracion de Azure DevOps + Azure Monitor) para evitar ruido de artefactos transitorios del despliegue:
 
-| Alert | Silence Duration | Rationale |
+| Alerta | Duracion del silencio | Justificacion |
 |---|---|---|
-| `UsersService-HighErrorRate` | 30 min | Brief spike possible during probe warming |
-| `UsersService-HighLatency` | 30 min | JIT compilation in new pods may briefly increase latency |
-| `UsersService-ReplicaMismatch` | 30 min | Blue/green coexistence creates intentional replica count shift |
-| `UsersService-AuthGrcpFailures` | 15 min | JWKS cache warming may cause brief gRPC failures on first requests |
+| `UsersService-HighErrorRate` | 30 min | Posible pico breve durante el calentamiento de sondas |
+| `UsersService-HighLatency` | 30 min | La compilacion JIT en nuevos pods puede aumentar brevemente la latencia |
+| `UsersService-ReplicaMismatch` | 30 min | La coexistencia blue/green crea un cambio intencional en el conteo de replicas |
+| `UsersService-AuthGrcpFailures` | 15 min | El calentamiento de cache JWKS puede causar breves fallos de gRPC en las primeras solicitudes |
 
-All other alerts (DB connection pool, Service Bus dead letter, certificate expiry) **remain active**.
+Todas las demas alertas (pool de conexiones de BD, cola de mensajes fallidos de Service Bus, vencimiento de certificados) **permanecen activas**.
 
-### 7.4 Key Commands for Ad-Hoc Monitoring
+### 7.4 Comandos clave para monitoreo ad-hoc
 
 ```bash
-# Watch pod startup
+# Observar el inicio de pods
 kubectl get pods -n platform -l app=users-service -w
 
-# Check green deployment rollout status
+# Verificar el estado del despliegue green
 kubectl rollout status deployment/users-service-green -n platform
 
-# Stream green deployment logs
+# Transmitir logs del despliegue green
 kubectl logs -n platform -l app=users-service,release=green --tail=20 -f
 
-# Check database connection pool on green pods
+# Verificar el pool de conexiones de base de datos en pods green
 kubectl exec -n platform deployment/users-service-green -- \
   curl -sf localhost:7201/metrics | grep 'npgsql_connection_pool'
 
-# Verify Istio routing
+# Verificar el enrutamiento de Istio
 kubectl get virtualservice users-service-vs -n platform -o yaml
 
-# Check mTLS status
+# Verificar el estado de mTLS
 istioctl authz check deployment/users-service-green -n platform
 ```
 
 ---
 
-## 8. Rollback Criteria and Procedure
+## 8. Criterios y procedimiento de revertir
 
-### 8.1 Rollback Triggers
+### 8.1 Disparadores de revertir
 
-The deployment **must be rolled back immediately** if any of the following conditions are met during the observation window:
+El despliegue **debe revertirse inmediatamente** si se cumple alguna de las siguientes condiciones durante la ventana de observacion:
 
-| # | Condition | Threshold | Severity | Detection Method |
+| # | Condicion | Umbral | Severidad | Metodo de deteccion |
 |---|---|---|---|---|
-| R1 | HTTP 5xx error rate | > 1% of requests over 2-minute window | **Critical** | Grafana alert / `users_requests_total` |
-| R2 | p99 latency | > 500ms over 5-minute window | **High** | Grafana alert / `users_operation_duration_seconds` |
-| R3 | Pod crash loop | > 2 restarts in 3 minutes for any pod | **Critical** | `kubectl get pods -w` |
-| R4 | Database connection pool exhaustion | Pool usage > 90% for 1 minute | **Critical** | `users_db_connection_pool_usage` metric |
-| R5 | Auth Service validation failures | > 10% of requests fail gRPC validation (cache also failing) | **Critical** | `users_auth_validation_duration_seconds` / Grafana |
-| R6 | Database replication lag | > 5 seconds sustained | **High** | `postgres_replication_lag` |
-| R7 | Any smoke test failure on re-run | Full suite re-run on green after cutover fails | **Critical** | Manual trigger |
-| R8 | Service Bus dead-letter count increasing | > 10 events dead-lettered in 5 minutes for green | **High** | Azure Monitor / `users_events_deadletter_total` |
-| R9 | Security incident reported | Any confirmed vulnerability in the deployed version | **Critical** | Security team notification |
+| R1 | Tasa de error HTTP 5xx | > 1% de solicitudes en ventana de 2 minutos | **Critica** | Alerta de Grafana / `users_requests_total` |
+| R2 | Latencia p99 | > 500ms en ventana de 5 minutos | **Alta** | Alerta de Grafana / `users_operation_duration_seconds` |
+| R3 | Bucle de fallo de pod | > 2 reinicios en 3 minutos para cualquier pod | **Critica** | `kubectl get pods -w` |
+| R4 | Agotamiento del pool de conexiones de BD | Uso del pool > 90% durante 1 minuto | **Critica** | Metrica `users_db_connection_pool_usage` |
+| R5 | Fallos de validacion de Auth Service | > 10% de solicitudes fallan validacion gRPC (cache tambien fallando) | **Critica** | `users_auth_validation_duration_seconds` / Grafana |
+| R6 | Retraso de replicacion de base de datos | > 5 segundos sostenido | **Alta** | `postgres_replication_lag` |
+| R7 | Falla de cualquier prueba de humo al re-ejecutar | Suite completa re-ejecutada en green despues de la conmutacion falla | **Critica** | Disparador manual |
+| R8 | Conteo de mensajes fallidos de Service Bus aumentando | > 10 eventos en cola de mensajes fallidos en 5 minutos para green | **Alta** | Azure Monitor / `users_events_deadletter_total` |
+| R9 | Incidente de seguridad reportado | Cualquier vulnerabilidad confirmada en la version desplegada | **Critica** | Notificacion del equipo de seguridad |
 
-### 8.2 Rollback Procedure
+### 8.2 Procedimiento de revertir
 
-**Automated rollback** (preferred) -- execute via the Azure DevOps "Rollback" pipeline button:
+**Revertir automatizado** (preferido) -- ejecutar mediante el boton "Rollback" del pipeline de Azure DevOps:
 
 ```bash
-# The rollback pipeline:
-# 1. Reverts the Istio VirtualService to route 100% traffic to blue
-# 2. Verifies blue pods are healthy and serving traffic
-# 3. Scales green to 0
+# El pipeline de revertir:
+# 1. Revierte el Istio VirtualService para enrutar el 100% del trafico a blue
+# 2. Verifica que los pods blue esten saludables y sirviendo trafico
+# 3. Escala green a 0
 ```
 
-**Manual rollback** (if pipeline is unavailable):
+**Revertir manual** (si el pipeline no esta disponible):
 
 ```bash
-# Step 1: Switch traffic back to blue
+# Paso 1: Cambiar el trafico de vuelta a blue
 kubectl apply -f k8s/manifests/istio/virtualservice-blue.yaml
 
-# Step 2: Verify blue is serving
+# Paso 2: Verificar que blue esta sirviendo
 curl -sf https://users.internal.platform/api/health/ready | jq .status
-# Expected: "ready"
+# Esperado: "ready"
 
-# Step 3: Scale down green
+# Paso 3: Reducir escala de green
 kubectl scale deployment/users-service-green -n platform --replicas=0
 
-# Step 4: Notify the team
+# Paso 4: Notificar al equipo
 # Slack: #platform-eng
-# Subject: "[ROLLBACK] users-service v2.1.1 rolled back to v2.1.0"
+# Asunto: "[ROLLBACK] users-service v2.1.1 revertido a v2.1.0"
 ```
 
-### 8.3 Database Rollback
+### 8.3 Revertir de base de datos
 
-If the deployment included a schema migration, the database must also be rolled back:
+Si el despliegue incluyo una migracion de esquema, la base de datos tambien debe revertirse:
 
 ```bash
-# Run the rollback migration
+# Ejecutar la migracion de revertir
 kubectl apply -f k8s/manifests/jobs/db-migrate-rollback.yaml
 
-# Verify rollback
+# Verificar la revertir
 kubectl logs -l job-name=users-db-rollback -n platform --tail=20
 ```
 
-**Important:** Database rollback is only possible if:
+**Importante:** La revertir de base de datos solo es posible si:
 
-- A forward-only migration has a corresponding rollback migration script.
-- No irreversible data changes occurred (e.g., column drops, data type changes).
-- The rollback migration was tested in staging before the deployment.
+- Una migracion solo hacia adelante tiene un script de migracion de revertir correspondiente.
+- No ocurrieron cambios de datos irreversibles (ej., eliminacion de columnas, cambios de tipo de datos).
+- La migracion de revertir fue probada en staging antes del despliegue.
 
-If the migration is irreversible, the rollback strategy shifts to **point-in-time recovery (PITR)** of the PostgreSQL database:
+Si la migracion es irreversible, la estrategia de revertir cambia a **recuperacion a un punto en el tiempo (PITR)** de la base de datos PostgreSQL:
 
 ```bash
-# PITR rollback (last resort, coordinated with DBA)
+# Revertir PITR (ultimo recurso, coordinado con DBA)
 az postgres flexible-server restore \
   --restore-time "2026-07-26T14:30:00Z" \
   --source-server users-db-primary \
   --name users-db-pitr-restore
 ```
 
-### 8.4 Post-Rollback Actions
+### 8.4 Acciones posteriores a la revertir
 
-| Action | Owner | Timeline |
+| Accion | Propietario | Plazo |
 |---|---|---|
-| Document root cause in incident report | On-call engineer | 1 hour post-rollback |
-| Revert the git commit(s) that introduced the defect | Developer | 2 hours |
-| Add regression test to smoke test suite | Developer | 1 business day |
-| Create follow-up ADR if rollback was due to architectural issue | Tech lead | 1 week |
-| Restore blue deployment to full replica count | SRE | Immediate |
-| Re-silence alerts | SRE | Immediate |
+| Documentar causa raiz en informe de incidente | Ingeniero de guardia | 1 hora despues de la revertir |
+| Revertir los commits de git que introdujeron el defecto | Desarrollador | 2 horas |
+| Agregar prueba de regresion al conjunto de pruebas de humo | Desarrollador | 1 dia habil |
+| Crear ADR de seguimiento si la revertir fue por problema arquitectonico | Lider tecnico | 1 semana |
+| Restaurar el despliegue blue al numero completo de replicas | SRE | Inmediato |
+| Re-silenciar alertas | SRE | Inmediato |
 
-### 8.5 Rollback RACI Matrix
+### 8.5 Matriz RACI de revertir
 
-| Activity | Developer | Tech Lead | SRE | Product Owner |
+| Actividad | Desarrollador | Lider tecnico | SRE | Product Owner |
 |---|---|---|---|---|
-| Detect rollback trigger | R | R | A | I |
-| Decide to roll back | C | A | R | I |
-| Execute rollback (automated) | I | I | R | I |
-| Execute rollback (manual) | I | C | R | I |
-| Roll back database | C | C | R | I |
-| Communicate rollback | I | R | A | I |
-| Investigate root cause | R | A | C | I |
-| Fix and redeploy | R | A | I | C |
-| Confirm fix | R | A | R | I |
+| Detectar disparador de revertir | R | R | A | I |
+| Decidir revertir | C | A | R | I |
+| Ejecutar revertir (automatizado) | I | I | R | I |
+| Ejecutar revertir (manual) | I | C | R | I |
+| Revertir base de datos | C | C | R | I |
+| Comunicar revertir | I | R | A | I |
+| Investigar causa raiz | R | A | C | I |
+| Corregir y redesplegar | R | A | I | C |
+| Confirmar correccion | R | A | R | I |
 
-*(R = Responsible, A = Accountable, C = Consulted, I = Informed)*
+*(R = Responsable, A = A cargo, C = Consultado, I = Informado)*
 
 ---
 
-## 9. Post-Deployment Validation
+## 9. Validacion posterior al despliegue
 
-After the observation window closes and blue is scaled to zero, perform a final validation pass:
+Despues de que la ventana de observacion se cierre y blue se escale a cero, realizar una pasada final de validacion:
 
-### 9.1 24-Hour Post-Deployment Checks
+### 9.1 Verificaciones 24 horas posteriores al despliegue
 
-| Check | Method | Expected |
+| Verificacion | Metodo | Esperado |
 |---|---|---|
-| Error rate steady | Grafana dashboard | < 0.5% 5xx |
-| Latency stable | Grafana dashboard | p99 < 100ms |
-| Pods stable, no restarts | `kubectl get pods` | 0 restarts since deployment |
-| Database connection pool | Grafana dashboard | Pool usage < 50% |
-| Auth Service validation | Grafana dashboard | gRDP p99 < 15ms |
-| Event consumer processing | Grafana dashboard | Lag < 10 seconds |
-| Backup completed successfully | Azure Backup report | Last backup: < 24 hours ago |
+| Tasa de error estable | Dashboard de Grafana | < 0.5% 5xx |
+| Latencia estable | Dashboard de Grafana | p99 < 100ms |
+| Pods estables, sin reinicios | `kubectl get pods` | 0 reinicios desde el despliegue |
+| Pool de conexiones de base de datos | Dashboard de Grafana | Uso del pool < 50% |
+| Validacion de Auth Service | Dashboard de Grafana | gRPC p99 < 15ms |
+| Procesamiento del consumidor de eventos | Dashboard de Grafana | Retraso < 10 segundos |
+| Copia de seguridad completada exitosamente | Informe de Azure Backup | Ultima copia: < 24 horas atras |
 
-### 9.2 Release Artifacts Archive
+### 9.2 Archivo de artefactos de version
 
-- [Release Notes](../releases/2.1.1.md)
-- [Pipeline Run](https://dev.azure.com/platform/_build/results?buildId=...) -- available in Azure DevOps
-- Container Image: `acrplatform.azurecr.io/users-service:2.1.1`
-- SBOM: Attached to pipeline artifacts
+- [Notas de version](../releases/2.1.1.md)
+- [Ejecucion del pipeline](https://dev.azure.com/platform/_build/results?buildId=...) -- disponible en Azure DevOps
+- Imagen de contenedor: `acrplatform.azurecr.io/users-service:2.1.1`
+- SBOM: Adjunto a los artefactos del pipeline
 
 ---
 
-## 10. References
+## 10. Referencias
 
-### Internal Documentation
+### Documentacion interna
 
-| Document | Location |
+| Documento | Ubicacion |
 |---|---|
-| Architecture Overview | `docs/architecture/overview.md` |
-| Deployment View | `docs/architecture/deployment-view.md` |
-| Security Architecture | `docs/architecture/security.md` |
-| Container View | `docs/architecture/containers.md` |
-| Rollback Runbook | `docs/runbooks/rollback.md` |
-| Incident Response Runbook | `docs/runbooks/incident-response.md` |
-| Operations Runbook | `docs/runbooks/operations.md` |
-| Operations Manual | `docs/decisions/operations.md` |
-| Monitoring & Alerting | `docs/decisions/monitoring.md` |
+| Vision general de arquitectura | `docs/architecture/overview.md` |
+| Vista de despliegue | `docs/architecture/deployment-view.md` |
+| Arquitectura de seguridad | `docs/architecture/security.md` |
+| Vista de contenedores | `docs/architecture/containers.md` |
+| Runbook de revertir | `docs/runbooks/rollback.md` |
+| Runbook de respuesta a incidentes | `docs/runbooks/incident-response.md` |
+| Runbook de operaciones | `docs/runbooks/operations.md` |
+| Manual de operaciones | `docs/decisions/operations.md` |
+| Monitoreo y alertas | `docs/decisions/monitoring.md` |
 
-### Pipeline & Infrastructure
+### Pipeline e infraestructura
 
-| Resource | Location |
+| Recurso | Ubicacion |
 |---|---|
-| Azure Pipeline Definition ID 101 | `https://dev.azure.com/platform/_build?definitionId=101` |
-| AKS Cluster (WE) | `platform-aks-we` resource group |
-| AKS Cluster (NE) | `platform-aks-ne` resource group |
-| Container Registry | `acrplatform.azurecr.io` |
-| Grafana Dashboard | `https://grafana.internal/d/users/users-service` |
+| Definicion de pipeline de Azure ID 101 | `https://dev.azure.com/platform/_build?definitionId=101` |
+| Cluster AKS (WE) | Grupo de recursos `platform-aks-we` |
+| Cluster AKS (NE) | Grupo de recursos `platform-aks-ne` |
+| Registro de contenedores | `acrplatform.azurecr.io` |
+| Dashboard de Grafana | `https://grafana.internal/d/users/users-service` |
 | PagerDuty | `https://pagerduty.internal/services/users-service` |
 
-### External References
+### Referencias externas
 
 - [Istio Virtual Service](https://istio.io/latest/docs/reference/config/networking/virtual-service/)
 - [Cosign Signing](https://docs.sigstore.dev/cosign/overview/)
@@ -882,30 +882,30 @@ After the observation window closes and blue is scaled to zero, perform a final 
 
 ---
 
-## Appendix A: Pipeline Variables
+## Apendice A: Variables del pipeline
 
-| Variable Name | Source | Sensitivity | Used In |
+| Nombre de variable | Origen | Sensibilidad | Usado en |
 |---|---|---|---|
-| `AdminJwt` | Azure DevOps Library | Secret | Smoke tests |
-| `UserJwt` | Azure DevOps Library | Secret | Smoke tests |
-| `ExpiredJwt` | Azure DevOps Library | Secret | Smoke tests |
-| `InvalidSigJwt` | Azure DevOps Library | Secret | Smoke tests |
-| `NoTenantJwt` | Azure DevOps Library | Secret | Smoke tests |
-| `CosignPrivateKey` | Azure Key Vault | Secret | Image signing |
-| `DockerRegistryServiceConnection` | Azure DevOps | Service connection | ACR push |
+| `AdminJwt` | Libreria de Azure DevOps | Secreto | Pruebas de humo |
+| `UserJwt` | Libreria de Azure DevOps | Secreto | Pruebas de humo |
+| `ExpiredJwt` | Libreria de Azure DevOps | Secreto | Pruebas de humo |
+| `InvalidSigJwt` | Libreria de Azure DevOps | Secreto | Pruebas de humo |
+| `NoTenantJwt` | Libreria de Azure DevOps | Secreto | Pruebas de humo |
+| `CosignPrivateKey` | Azure Key Vault | Secreto | Firma de imagen |
+| `DockerRegistryServiceConnection` | Azure DevOps | Conexion de servicio | Push a ACR |
 
-## Appendix B: Maintenance Windows
+## Apendice B: Ventanas de mantenimiento
 
-| Migration Type | Window | Duration | Communication |
+| Tipo de migracion | Ventana | Duracion | Comunicacion |
 |---|---|---|---|
-| **NON-BREAKING** (add column, add index, add table) | Any time | No downtime | Pipeline comment only |
-| **BREAKING** (rename column, add NOT NULL, table split) | Wednesday 02:00-04:00 UTC | < 15 min | 48-hour advance notice in `#platform-eng` |
-| **EXCLUSIVE** (table rebuild, data migration, backfill) | Saturday 04:00-06:00 UTC | < 60 min | 1-week advance notice; read-only maintenance mode |
+| **NO RUPTURA** (agregar columna, agregar indice, agregar tabla) | Cualquier momento | Sin tiempo de inactividad | Solo comentario en pipeline |
+| **RUPTURA** (renombrar columna, agregar NOT NULL, dividir tabla) | Miercoles 02:00-04:00 UTC | < 15 min | Aviso con 48 horas de anticipacion en `#platform-eng` |
+| **EXCLUSIVA** (reconstruir tabla, migracion de datos, relleno) | Sabado 04:00-06:00 UTC | < 60 min | Aviso con 1 semana de anticipacion; modo de solo lectura |
 
 ---
 
-## Document Change Log
+## Registro de cambios del documento
 
-| Date | Version | Author | Change |
+| Fecha | Version | Autor | Cambio |
 |---|---|---|---|
-| 2026-07-26 | 1.0 | Platform Engineering | Initial deployment runbook |
+| 2026-07-26 | 1.0 | Ingenieria de Plataforma | Runbook de despliegue inicial |

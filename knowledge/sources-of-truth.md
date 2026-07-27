@@ -1,55 +1,55 @@
-# Sources of Truth
+# Fuentes de Verdad
 
-## Canonical Sources
+## Fuentes Canonicas
 
-The following are considered **authoritative sources of truth** for information about the Users Service. When conflicts arise between sources, higher-precedence sources take priority.
+Las siguientes son consideradas **fuentes de verdad autoritativas** para informacion sobre el Servicio de Usuarios. Cuando surjan conflictos entre fuentes, las fuentes de mayor precedencia tienen prioridad.
 
-## Precedence Hierarchy
+## Jerarquia de Precedencia
 
-| Priority | Source | Scope | Authority |
+| Prioridad | Fuente | Alcance | Autoridad |
 |---|---|---|---|
-| **1 (Highest)** | `openapi.yaml` | API contract | **Normative** — the API IS what the spec says |
-| **2** | `catalog-info.yaml` | Entity metadata | **Normative** — ownership, dependencies, lifecycle, system/domain membership |
-| **3** | `docs/architecture/*.md` | System design | **Authoritative** — written by architects, reviewed by team |
-| **4** | `docs/adr/*.md` | Decisions | **Authoritative** — records of accepted architectural decisions (e.g., PostgreSQL over MongoDB, dual JWT validation) |
-| **5** | `docs/api/*.md` | API documentation | **Informative** — derived from OpenAPI, adds narrative |
-| **6** | `docs/runbooks/*.md` | Operations | **Authoritative** — written by SRE, validated in production |
-| **7** | `docs/decisions/*.md` | Standards | **Normative** — these ARE the rules |
-| **8** | `docs/onboarding/*.md` | Guides | **Informative** — helpful but may lag behind code |
-| **9** | `README.md` | Overview | **Informative** — entry-level summary |
-| **10 (Lowest)** | Source code (`src/`) | Implementation | **Informative** — the code does what the code does, but the spec is the contract |
+| **1 (Mas alta)** | `openapi.yaml` | Contrato de API | **Normativa** -- la API ES lo que dice la especificacion |
+| **2** | `catalog-info.yaml` | Metadatos de entidad | **Normativa** -- propiedad, dependencias, ciclo de vida, pertenencia a sistema/dominio |
+| **3** | `docs/architecture/*.md` | Diseno del sistema | **Autoritativa** -- escrita por arquitectos, revisada por el equipo |
+| **4** | `docs/adr/*.md` | Decisiones | **Autoritativa** -- registros de decisiones arquitectonicas aceptadas (ej., PostgreSQL sobre MongoDB, validacion JWT dual) |
+| **5** | `docs/api/*.md` | Documentacion de API | **Informativa** -- derivada de OpenAPI, anade narrativa |
+| **6** | `docs/runbooks/*.md` | Operaciones | **Autoritativa** -- escrita por SRE, validada en produccion |
+| **7** | `docs/decisions/*.md` | Estandares | **Normativa** -- estas SON las reglas |
+| **8** | `docs/onboarding/*.md` | Guias | **Informativa** -- util pero puede estar desactualizada respecto al codigo |
+| **9** | `README.md` | Resumen general | **Informativa** -- resumen de nivel inicial |
+| **10 (Mas baja)** | Codigo fuente (`src/`) | Implementacion | **Informativa** -- el codigo hace lo que el codigo hace, pero la especificacion es el contrato |
 
-## Conflict Resolution
+## Resolucion de Conflictos
 
-When two sources disagree:
+Cuando dos fuentes discrepan:
 
-1. The **higher-precedence** source is considered correct
-2. File an issue to reconcile the discrepancy
-3. Label it `documentation-gap` or `spec-implementation-gap`
+1. La fuente de **mayor precedencia** se considera correcta
+2. Reportar un incidente para reconciliar la discrepancia
+3. Etiquetarlo como `documentation-gap` o `spec-implementation-gap`
 
-## External Sources of Truth
+## Fuentes de Verdad Externas
 
-| Source | Scope | Relationship |
+| Fuente | Alcance | Relacion |
 |---|---|---|
-| **Azure AD / Entra ID** | Corporate identity | Master for employee existence, department, job title, manager hierarchy. The Users Service enriches profiles from this source nightly |
-| **Authentication Service** | JWT issuance | Master for access tokens, refresh tokens, and session state. Users Service validates JWTs against this service |
-| **Azure Key Vault** | Secrets and keys | Master for PostgreSQL connection strings, Service Bus connection strings, and gRPC client certificates |
-| **PostgreSQL (Users DB)** | User profiles | Runtime source of truth for user profile data, role assignments, and audit logs. Backed up nightly, point-in-time restore enabled |
-| **Backstage Catalog** | Consolidated entity registry | Aggregate view — fed by individual `catalog-info.yaml` files |
-| **Microsoft Graph API** | Entra ID enrichment | Source of truth for corporate directory attributes (department, office location, manager, profile photo) |
+| **Azure AD / Entra ID** | Identidad corporativa | Maestro para existencia de empleados, departamento, puesto de trabajo, jerarquia de gerentes. El Servicio de Usuarios enriquece perfiles desde esta fuente cada noche |
+| **Servicio de Autenticacion** | Emision de JWT | Maestro para tokens de acceso, tokens de actualizacion y estado de sesion. El Servicio de Usuarios valida JWTs contra este servicio |
+| **Azure Key Vault** | Secretos y llaves | Maestro para cadenas de conexion de PostgreSQL, cadenas de conexion de Service Bus y certificados de cliente gRPC |
+| **PostgreSQL (BD de Usuarios)** | Perfiles de usuario | Fuente de verdad en tiempo de ejecucion para datos de perfil de usuario, asignaciones de roles y registros de auditoria. Respaldado cada noche, restauracion a un punto en el tiempo habilitada |
+| **Catalogo de Backstage** | Registro de entidades consolidado | Vista agregada -- alimentada por archivos `catalog-info.yaml` individuales |
+| **Microsoft Graph API** | Enriquecimiento de Entra ID | Fuente de verdad para atributos del directorio corporativo (departamento, ubicacion de oficina, gerente, foto de perfil) |
 
-## Specific Precedence Notes for Users Service
+## Notas Especificas de Precedencia para el Servicio de Usuarios
 
-| Scenario | Precedence Rule |
+| Escenario | Regla de Precedencia |
 |---|---|
-| RBAC role definitions | `docs/architecture/security.md` takes precedence over `docs/api/users-api.md` |
-| Endpoint contract | `openapi.yaml` takes precedence over `docs/api/users-api.md` |
-| Dependency declaration | `catalog-info.yaml` `spec.dependsOn` takes precedence over architecture markdown |
-| Event schema | `docs/api/events.md` takes precedence (single source of truth for event payloads) |
-| Data retention policy | `docs/architecture/security.md` (PII Handling section) is the canonical source |
-| Technology versions | `docs/architecture/technology-stack.md` takes precedence over `README.md` |
+| Definiciones de roles RBAC | `docs/architecture/security.md` tiene prioridad sobre `docs/api/users-api.md` |
+| Contrato de endpoint | `openapi.yaml` tiene prioridad sobre `docs/api/users-api.md` |
+| Declaracion de dependencia | `catalog-info.yaml` `spec.dependsOn` tiene prioridad sobre el markdown de arquitectura |
+| Esquema de eventos | `docs/api/events.md` tiene prioridad (fuente unica de verdad para cargas utiles de eventos) |
+| Politica de retencion de datos | `docs/architecture/security.md` (seccion de Manejo de PII) es la fuente canonica |
+| Versiones de tecnologia | `docs/architecture/technology-stack.md` tiene prioridad sobre `README.md` |
 
-## Related Documents
+## Documentos Relacionados
 
 - [Document Priority](document-priority.md)
 - [Indexing Strategy](indexing-strategy.md)

@@ -1,100 +1,100 @@
-# Branching Strategy — Users Service
+# Estrategia de Ramas — Users Service
 
-## Model: Trunk-Based Development
+## Modelo: Desarrollo Basado en Tronco (Trunk-Based Development)
 
-The Users Service follows a trunk-based development model with short-lived feature branches, identical to the Auth Service. This ensures consistent developer experience across the platform.
+El Users Service sigue un modelo de desarrollo basado en tronco con ramas de característica de corta duración, idéntico al Auth Service. Esto garantiza una experiencia de desarrollo consistente en toda la plataforma.
 
-## Branch Naming Convention
+## Convención de Nomenclatura de Ramas
 
-| Branch Type | Pattern | Example |
+| Tipo de Rama | Patrón | Ejemplo |
 |---|---|---|
-| Feature | `feature/<issue-number>-<kebab-description>` | `feature/142-graph-profile-enrichment` |
-| Bug fix | `fix/<issue-number>-<kebab-description>` | `fix/89-tenant-filter-missing` |
-| Hotfix (prod) | `hotfix/<issue-number>-<kebab-description>` | `hotfix/201-soft-delete-data-loss` |
-| Chore | `chore/<issue-number>-<kebab-description>` | `chore/305-upgrade-npgsql` |
-| Refactor | `refactor/<issue-number>-<kebab-description>` | `refactor/178-extract-event-consumer` |
+| Característica | `feature/<issue-number>-<kebab-description>` | `feature/142-graph-profile-enrichment` |
+| Corrección de error | `fix/<issue-number>-<kebab-description>` | `fix/89-tenant-filter-missing` |
+| Hotfix (producción) | `hotfix/<issue-number>-<kebab-description>` | `hotfix/201-soft-delete-data-loss` |
+| Tarea | `chore/<issue-number>-<kebab-description>` | `chore/305-upgrade-npgsql` |
+| Refactorización | `refactor/<issue-number>-<kebab-description>` | `refactor/178-extract-event-consumer` |
 
-All branches branch from `main` and are merged via squash-merge pull requests. Maximum branch lifetime: 3 days.
+Todas las ramas se crean a partir de `main` y se fusionan mediante squash-merge pull requests. Duración máxima de la rama: 3 días.
 
-## Pull Request Requirements
+## Requisitos de Pull Request
 
-- **Title:** Conventional commit format: `type(scope): description` (e.g., `feat(user): add Graph API profile enrichment`).
-- **Description:** Summary of changes, testing instructions, related issues.
-- **Size:** Maximum 400 lines changed (excluding generated files and tests).
-- **Checklist:** All items from coding standards code review checklist must be satisfied.
-- **Labels:** At minimum `area/<component>` (e.g., `area/user-service`, `area/event-consumer`).
-- **Labels:** Include `rbac-review` if endpoint permissions changed, `db-migration` if schema changes.
+- **Título:** Formato de commit convencional: `type(scope): description` (ej., `feat(user): add Graph API profile enrichment`).
+- **Descripción:** Resumen de cambios, instrucciones de prueba, issues relacionados.
+- **Tamaño:** Máximo 400 líneas cambiadas (excluyendo archivos generados y pruebas).
+- **Lista de verificación:** Todos los elementos de la lista de verificación de revisión de código de los estándares de codificación deben cumplirse.
+- **Etiquetas:** Como mínimo `area/<component>` (ej., `area/user-service`, `area/event-consumer`).
+- **Etiquetas:** Incluir `rbac-review` si los permisos de endpoint cambiaron, `db-migration` si hay cambios de esquema.
 
-## Branch Protection Rules (main)
+## Reglas de Protección de Rama (main)
 
-- Require pull request before merging.
-- Require at least 2 approvals (one must be from a senior engineer).
-- Dismiss stale reviews on new commits.
-- Require status checks: build, unit tests, integration tests, coverage (>= 80%), SonarQube quality gate.
-- Require branches to be up to date before merging.
-- Restrict push access to Platform Engineering team.
+- Requerir pull request antes de fusionar.
+- Requerir al menos 2 aprobaciones (una debe ser de un ingeniero senior).
+- Invalidar revisiones obsoletas en nuevos commits.
+- Requerir verificaciones de estado: compilación, pruebas unitarias, pruebas de integración, cobertura (>= 80%), calidad SonarQube.
+- Requerir que las ramas estén actualizadas antes de fusionar.
+- Restringir acceso de push al equipo de Platform Engineering.
 
-## CI/CD Pipeline
+## Pipeline CI/CD
 
 ```
-Push to feature branch → Build → Unit tests → Integration tests (Testcontainers) → Coverage → SonarQube → Mend scan
-Merge to main → Build → Tests → Coverage → SonarQube → Mend scan → Deploy to staging
-Tag release → Deploy to production (manual approval gate)
+Push a rama de característica → Compilación → Pruebas unitarias → Pruebas de integración (Testcontainers) → Cobertura → SonarQube → Escaneo Mend
+Fusión a main → Compilación → Pruebas → Cobertura → SonarQube → Escaneo Mend → Despliegue a staging
+Tag de release → Despliegue a producción (puerta de aprobación manual)
 ```
 
-## Release Tags
+## Tags de Release
 
-- Format: `v<major>.<minor>.<patch>` (see versioning.md).
-- Tags are created from `main` after release commit is merged.
-- Tags are immutable once pushed.
+- Formato: `v<major>.<minor>.<patch>` (ver versioning.md).
+- Los tags se crean desde `main` después de que el commit de release se fusiona.
+- Los tags son inmutables una vez publicados.
 
 ```bash
 git tag -a v1.2.3 -m "Release v1.2.3"
 git push origin v1.2.3
 ```
 
-## Hotfix Process
+## Proceso de Hotfix
 
-1. Branch from the affected release tag: `git checkout -b hotfix/description v<version>`.
-2. Fix with the minimal possible change.
-3. Open PR targeting `main` (single reviewer approval sufficient for hotfixes).
-4. After squash-merge to `main`, tag the new patch version.
-5. Deploy the patch tag to production.
-6. If the hotfix addresses a security vulnerability, follow the accelerated timeline (same-day deploy).
+1. Crear rama desde el tag de release afectado: `git checkout -b hotfix/description v<version>`.
+2. Corregir con el cambio mínimo posible.
+3. Abrir PR apuntando a `main` (aprobación de un solo revisor suficiente para hotfixes).
+4. Después del squash-merge a `main`, etiquetar la nueva versión patch.
+5. Desplegar el tag patch a producción.
+6. Si el hotfix aborda una vulnerabilidad de seguridad, seguir el cronograma acelerado (despliegue el mismo día).
 
-## Squash Merge Policy
+## Política de Squash Merge
 
-All feature, fix, and chore branches MUST be squash-merged. Commit messages on `main` follow:
+Todas las ramas de característica, corrección y tarea DEBEN fusionarse con squash-merge. Los mensajes de commit en `main` siguen:
 
 ```
 type(scope): description (#PR-number)
 ```
 
-Examples:
+Ejemplos:
 ```
 feat(user): add Microsoft Graph profile enrichment (#142)
 fix(tenant): correct tenant isolation in bulk query (#89)
 chore(deps): update Npgsql to 9.0.1 (#305)
 ```
 
-## Conventional Commit Types
+## Tipos de Commit Convencionales
 
-| Type | Usage |
+| Tipo | Uso |
 |---|---|
-| `feat` | New feature or endpoint |
-| `fix` | Bug fix |
-| `chore` | Maintenance, dependencies, tooling |
-| `refactor` | Code restructuring without behavior change |
-| `test` | Test additions or changes |
-| `docs` | Documentation changes |
-| `perf` | Performance improvements |
-| `ci` | CI/CD pipeline changes |
-| `db` | Database migration or schema change |
+| `feat` | Nueva característica o endpoint |
+| `fix` | Corrección de error |
+| `chore` | Mantenimiento, dependencias, herramientas |
+| `refactor` | Reestructuración de código sin cambio de comportamiento |
+| `test` | Adiciones o cambios de pruebas |
+| `docs` | Cambios de documentación |
+| `perf` | Mejoras de rendimiento |
+| `ci` | Cambios en pipeline CI/CD |
+| `db` | Migración de base de datos o cambio de esquema |
 
-## Emergency Change Process
+## Proceso de Cambio de Emergencia
 
-For critical security vulnerabilities or production outages:
+Para vulnerabilidades de seguridad críticas o interrupciones de producción:
 
-1. Engineering lead authorizes bypass of standard review (minimum one senior engineer must still review).
-2. Deployment monitored by on-call engineer for 30 minutes post-deploy.
-3. Post-mortem created within 24 hours.
+1. El líder de ingeniería autoriza la omisión de la revisión estándar (al menos un ingeniero senior debe revisar aún).
+2. Despliegue monitoreado por el ingeniero de guardia durante 30 minutos posteriores al despliegue.
+3. Post-mortem creado dentro de las 24 horas.

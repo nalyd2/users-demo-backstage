@@ -1,44 +1,44 @@
-# Events
+# Eventos
 
-## Overview
+## Descripción General
 
-The Users Service **consumes** authentication events from the Auth Service and **publishes** user lifecycle events. All communication is asynchronous via Azure Service Bus.
+El Servicio de Usuarios **consume** eventos de autenticación del Servicio de Autenticación y **publica** eventos del ciclo de vida del usuario. Toda la comunicación es asíncrona a través de Azure Service Bus.
 
-## Event Flow
+## Flujo de Eventos
 
 ```mermaid
 flowchart LR
-    subgraph "Auth Service"
-        auth_pub["Event Publisher"]
+    subgraph "Servicio de Autenticación"
+        auth_pub["Publicador de Eventos"]
     end
-    subgraph "Service Bus"
-        topic_auth["auth-events<br/>(Topic)"]
-        topic_users["users-events<br/>(Topic)"]
+    subgraph "Bus de Servicio"
+        topic_auth["auth-events<br/>(Tema)"]
+        topic_users["users-events<br/>(Tema)"]
     end
-    subgraph "Users Service"
-        user_sub["Event Consumer<br/>(Subscription)"]
-        user_pub["Event Publisher"]
+    subgraph "Servicio de Usuarios"
+        user_sub["Consumidor de Eventos<br/>(Suscripción)"]
+        user_pub["Publicador de Eventos"]
     end
-    subgraph "Downstream"
-        audit["Audit Service"]
-        notification["Notification Service"]
+    subgraph "Aguas Abajo"
+        audit["Servicio de Auditoría"]
+        notification["Servicio de Notificación"]
     end
 
     auth_pub -->|user.login, user.logout| topic_auth
     topic_auth --> user_sub
-    user_sub -->|Updates user activity| user_pub
+    user_sub -->|Actualiza actividad del usuario| user_pub
     user_pub -->|user.created, updated, deleted| topic_users
     topic_users --> audit
     topic_users --> notification
 ```
 
-## Consumed Events (from Auth Service)
+## Eventos Consumidos (del Servicio de Autenticación)
 
-**Source:** Auth Service → `auth-events` topic → `users-service` subscription
+**Fuente:** Servicio de Autenticación → tema `auth-events` → suscripción `users-service`
 
 ### `user.login`
 
-**Action:** Updates `last_login_at` on the user's profile.
+**Acción:** Actualiza `last_login_at` en el perfil del usuario.
 
 ```json
 {
@@ -50,11 +50,11 @@ flowchart LR
 }
 ```
 
-**Idempotency:** Deduplicated by `eventId` in `event_deduplication` table.
+**Idempotencia:** Desduplicado por `eventId` en la tabla `event_deduplication`.
 
 ### `user.logout`
 
-**Action:** Updates `last_logout_at` and computes session duration.
+**Acción:** Actualiza `last_logout_at` y calcula la duración de la sesión.
 
 ```json
 {
@@ -69,7 +69,7 @@ flowchart LR
 
 ### `token.revoked`
 
-**Action:** Records token revocation in the user's audit trail.
+**Acción:** Registra la revocación del token en el registro de auditoría del usuario.
 
 ```json
 {
@@ -82,13 +82,13 @@ flowchart LR
 }
 ```
 
-## Published Events (from Users Service)
+## Eventos Publicados (del Servicio de Usuarios)
 
-**Destination:** `users-events` topic
+**Destino:** tema `users-events`
 
 ### `user.created`
 
-Published after a new user profile is created.
+Publicado después de que se crea un nuevo perfil de usuario.
 
 ```json
 {
@@ -106,7 +106,7 @@ Published after a new user profile is created.
 
 ### `user.updated`
 
-Published after a user profile is updated. Includes changed field names for efficient downstream processing.
+Publicado después de que se actualiza un perfil de usuario. Incluye los nombres de los campos modificados para un procesamiento eficiente en etapas posteriores.
 
 ```json
 {
@@ -123,7 +123,7 @@ Published after a user profile is updated. Includes changed field names for effi
 
 ### `user.deleted`
 
-Published after a user is soft-deleted.
+Publicado después de que un usuario es eliminado lógicamente.
 
 ```json
 {
@@ -137,24 +137,24 @@ Published after a user is soft-deleted.
 }
 ```
 
-## Processing Guarantees
+## Garantías de Procesamiento
 
-| Guarantee | Mechanism |
+| Garantía | Mecanismo |
 |---|---|
-| **At-least-once delivery** | Service Bus PeekLock + auto-renewal (max 5 min) |
-| **In-order per user** | Session-enabled topic (session ID = `userId`) |
-| **Idempotency** | Deduplication table: `event_deduplication(event_id)` |
-| **Dead-letter** | After 10 delivery failures → dead-letter queue |
-| **Monitoring** | `users_events_processed_total` Prometheus counter |
+| **Entrega al menos una vez** | Service Bus PeekLock + renovación automática (máx. 5 min) |
+| **En orden por usuario** | Tema habilitado para sesiones (ID de sesión = `userId`) |
+| **Idempotencia** | Tabla de desduplicación: `event_deduplication(event_id)` |
+| **Cartas muertas** | Después de 10 fallos de entrega → cola de cartas muertas |
+| **Monitoreo** | Contador de Prometheus `users_events_processed_total` |
 
-## Processing Lag
+## Retraso de Procesamiento
 
-Metric: `users_event_processing_lag_seconds`
+Métrica: `users_event_processing_lag_seconds`
 
-Alert: If lag > 60 seconds for 5 minutes → PagerDuty warning.
+Alerta: Si el retraso > 60 segundos durante 5 minutos → advertencia de PagerDuty.
 
-## Related Documents
+## Documentos Relacionados
 
-- [Users API](users-api.md)
-- [System Context](../architecture/context.md)
-- [Dependencies](../decisions/dependencies.md)
+- [API de Usuarios](users-api.md)
+- [Contexto del Sistema](../architecture/context.md)
+- [Dependencias](../decisions/dependencies.md)

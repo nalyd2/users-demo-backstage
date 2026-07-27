@@ -1,30 +1,30 @@
 # ============================================================================
-# MkDocs / TechDocs Configuration — Users Service
+# Configuración de MkDocs / TechDocs — Users Service
 # ============================================================================
-# TechDocs renders this mkdocs.yml in Backstage using the Material for MkDocs
-# theme. All documentation under docs/ is published automatically.
+# TechDocs renderiza este mkdocs.yml en Backstage usando el tema Material for MkDocs.
+# Toda la documentación bajo docs/ se publica automáticamente.
 #
-# Reference: https://backstage.io/docs/features/techdocs/
-#            https://squidfunk.github.io/mkdocs-material/
+# Referencia: https://backstage.io/docs/features/techdocs/
+#             https://squidfunk.github.io/mkdocs-material/
 # ============================================================================
 
 site_name: Users Service
 site_description: >-
-  User Management Service for the Internal Developer Platform.
-  Complete user lifecycle — CRUD profiles, role assignments, and event-driven
-  integration with the Authentication Service.
-site_author: Platform Engineering Team
+  Servicio de Gestión de Usuarios para la Plataforma Interna de Desarrollo.
+  Ciclo de vida completo del usuario — CRUD de perfiles, asignación de roles e
+  integración basada en eventos con el Servicio de Autenticación.
+site_author: Equipo de Ingeniería de Plataforma
 
 repo_name: platform/users-service
 repo_url: https://dev.azure.com/platform/_git/users-service
 edit_uri: edit/main/docs/
 
 # ---------------------------------------------------------------------------
-# Theme — Material for MkDocs
+# Tema — Material for MkDocs
 # ---------------------------------------------------------------------------
 theme:
   name: material
-  language: en
+  language: es
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -32,14 +32,14 @@ theme:
       accent: teal
       toggle:
         icon: material/weather-night
-        name: Switch to dark mode
+        name: Cambiar a modo oscuro
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: teal
       accent: cyan
       toggle:
         icon: material/weather-sunny
-        name: Switch to light mode
+        name: Cambiar a modo claro
   font:
     text: Inter
     code: JetBrains Mono
@@ -71,7 +71,7 @@ theme:
 # ---------------------------------------------------------------------------
 plugins:
   - search:
-      lang: en
+      lang: es
       separator: '[\s\-,:!=\[\]()"/]+'
   - mermaid2:
       arguments:
@@ -81,7 +81,7 @@ plugins:
       javascript: https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js
 
 # ---------------------------------------------------------------------------
-# Extensions
+# Extensiones
 # ---------------------------------------------------------------------------
 markdown_extensions:
   - admonition
@@ -92,7 +92,7 @@ markdown_extensions:
   - meta
   - toc:
       permalink: true
-      permalink_title: Anchor link to this section
+      permalink_title: Enlace permanente a esta sección
   - tables
   - footnotes
   - def_list
@@ -100,7 +100,7 @@ markdown_extensions:
   - md_in_html
   - sane_lists
 
-  # PyMdown Extensions (Material)
+  # Extensiones PyMdown (Material)
   - pymdownx.betterem
   - pymdownx.caret
   - pymdownx.critic
@@ -135,60 +135,60 @@ markdown_extensions:
   - pymdownx.tilde
 
 # ---------------------------------------------------------------------------
-# Navigation — matches the docs/ directory structure
+# Navegación — coincide con la estructura del directorio docs/
 # ---------------------------------------------------------------------------
 nav:
-  - Home: index.md
+  - Inicio: index.md
 
-  - Architecture:
-      - Overview: architecture/overview.md
-      - System Context: architecture/context.md
-      - Container View: architecture/containers.md
-      - Component View: architecture/components.md
-      - Deployment View: architecture/deployment-view.md
-      - Security Architecture: architecture/security.md
-      - Technology Stack: architecture/technology-stack.md
+  - Arquitectura:
+      - Visión General: architecture/overview.md
+      - Contexto del Sistema: architecture/context.md
+      - Vista de Contenedores: architecture/containers.md
+      - Vista de Componentes: architecture/components.md
+      - Vista de Despliegue: architecture/deployment-view.md
+      - Arquitectura de Seguridad: architecture/security.md
+      - Stack Tecnológico: architecture/technology-stack.md
 
-  - API Reference:
-      - Users API: api/users-api.md
-      - Events: api/events.md
-      - Variables & Configuration: api/variables.md
+  - Referencia de API:
+      - API de Usuarios: api/users-api.md
+      - Eventos: api/events.md
+      - Variables y Configuración: api/variables.md
 
   - Runbooks:
-      - Restart Service: runbooks/restart-service.md
-      - Deployment: runbooks/deployment.md
-      - Incident Response: runbooks/incident-response.md
+      - Reiniciar Servicio: runbooks/restart-service.md
+      - Despliegue: runbooks/deployment.md
+      - Respuesta a Incidentes: runbooks/incident-response.md
       - Rollback: runbooks/rollback.md
-      - Operations: runbooks/operations.md
+      - Operaciones: runbooks/operations.md
 
   - Onboarding:
-      - Developer Guide: onboarding/developer-guide.md
-      - Local Development: onboarding/local-development.md
-      - How to Debug: onboarding/how-to-debug.md
-      - Testing: onboarding/testing.md
+      - Guía para Desarrolladores: onboarding/developer-guide.md
+      - Desarrollo Local: onboarding/local-development.md
+      - Cómo Depurar: onboarding/how-to-debug.md
+      - Pruebas: onboarding/testing.md
 
-  - Architecture Decisions:
-      - ADR-001 — PostgreSQL over MongoDB: adr/ADR-001.md
-      - ADR-002 — JWT Validation at Gateway: adr/ADR-002.md
-      - ADR-003 — Event-Driven User Sync: adr/ADR-003.md
+  - Decisiones de Arquitectura:
+      - ADR-001 — PostgreSQL sobre MongoDB: adr/ADR-001.md
+      - ADR-002 — Validación JWT en Gateway: adr/ADR-002.md
+      - ADR-003 — Sincronización de Usuarios por Eventos: adr/ADR-003.md
 
-  - Decisions & Standards:
-      - Coding Standards: decisions/coding-standards.md
-      - Branching Strategy: decisions/branching.md
-      - Versioning: decisions/versioning.md
-      - Security Guidelines: decisions/security-guidelines.md
-      - Observability: decisions/observability.md
-      - Dependencies: decisions/dependencies.md
-      - Ownership: decisions/ownership.md
-      - Monitoring: decisions/monitoring.md
-      - Roadmap: decisions/roadmap.md
-      - Future Integrations: decisions/future-integrations.md
-      - Risks: decisions/risks.md
-      - Known Limitations: decisions/known-limitations.md
-      - Glossary: decisions/glossary.md
+  - Decisiones y Estándares:
+      - Estándares de Código: decisions/coding-standards.md
+      - Estrategia de Ramas: decisions/branching.md
+      - Versionado: decisions/versioning.md
+      - Guías de Seguridad: decisions/security-guidelines.md
+      - Observabilidad: decisions/observability.md
+      - Dependencias: decisions/dependencies.md
+      - Propiedad: decisions/ownership.md
+      - Monitoreo: decisions/monitoring.md
+      - Hoja de Ruta: decisions/roadmap.md
+      - Integraciones Futuras: decisions/future-integrations.md
+      - Riesgos: decisions/risks.md
+      - Limitaciones Conocidas: decisions/known-limitations.md
+      - Glosario: decisions/glossary.md
 
 # ---------------------------------------------------------------------------
-# Extra configuration
+# Configuración extra
 # ---------------------------------------------------------------------------
 extra:
   version:

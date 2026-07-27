@@ -1,131 +1,131 @@
-# Security Guidelines — Users Service
+# Directrices de Seguridad — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team / Security Champion
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering / Security Champion
+- **Última actualización:** 2026-07-20
 
-## Scope
+## Alcance
 
-This document defines the security standards for the Users Service, which manages user profiles, tenant data, and RBAC roles. As a Tier 1 service containing Personally Identifiable Information (PII), it has distinct security requirements beyond the Auth Service.
+Este documento define los estándares de seguridad para el Users Service, que gestiona perfiles de usuario, datos de inquilino y roles RBAC. Como servicio de Nivel 1 que contiene Información de Identificación Personal (PII), tiene requisitos de seguridad distintos más allá del Auth Service.
 
-## OWASP Top 10 Mitigations
+## Mitigaciones de OWASP Top 10
 
-### A01: Broken Access Control
+### A01: Control de Acceso Roto
 
-- All endpoints require a valid JWT from the Auth Service, validated via JWKS signature verification.
-- RBAC (Admin, Operator, User roles) enforced at middleware level for every endpoint.
-- Tenant isolation: every query includes `tenant_id = {user_tenant}` enforced in the repository layer.
-- Soft-delete prevents unauthorized permanent data destruction; only Admin role can hard-delete.
-- Cursor pagination prevents resource enumeration via sequential IDs (UUIDv4 used for all resource identifiers).
+- Todos los endpoints requieren un JWT válido del Auth Service, validado mediante verificación de firma JWKS.
+- RBAC (roles Admin, Operator, User) aplicado a nivel de middleware para cada endpoint.
+- Aislamiento de inquilino: cada consulta incluye `tenant_id = {user_tenant}` aplicado en la capa de repositorio.
+- Soft-delete previene la destrucción permanente de datos no autorizada; solo el rol Admin puede hacer hard-delete.
+- Paginación por cursor previene la enumeración de recursos mediante IDs secuenciales (UUIDv4 utilizado para todos los identificadores de recursos).
 
-### A02: Cryptographic Failures
+### A02: Fallos Criptográficos
 
-- All PII fields (email, phone, address) encrypted at rest using AES-256-GCM in the database.
-- Sensitive fields logged only as hashes (never plaintext).
-- All data in transit uses TLS 1.3.
-- Passwords are never stored in the Users Service; authentication is entirely delegated to the Auth Service.
+- Todos los campos PII (correo electrónico, teléfono, dirección) cifrados en reposo usando AES-256-GCM en la base de datos.
+- Campos sensibles registrados solo como hashes (nunca en texto plano).
+- Todos los datos en tránsito usan TLS 1.3.
+- Las contraseñas nunca se almacenan en el Users Service; la autenticación se delega completamente al Auth Service.
 
-### A03: Injection
+### A03: Inyección
 
-- All SQL queries use Entity Framework Core with parameterized queries.
-- Graph API queries use the Microsoft Graph SDK with parameterized request builders.
-- Input validation on all DTOs using FluentValidation.
+- Todas las consultas SQL usan Entity Framework Core con consultas parametrizadas.
+- Las consultas a Graph API usan Microsoft Graph SDK con constructores de solicitudes parametrizadas.
+- Validación de entrada en todos los DTOs usando FluentValidation.
 
-### A04: Insecure Design
+### A04: Diseño Inseguro
 
-- New features require security review with focus on tenant isolation and PII handling.
-- Rate limiting at API gateway for user enumeration prevention.
-- Bulk operations limited to 1000 records per request with configurable throttle.
+- Las nuevas características requieren revisión de seguridad con enfoque en aislamiento de inquilino y manejo de PII.
+- Limitación de tasa en API gateway para prevención de enumeración de usuarios.
+- Operaciones por lote limitadas a 1000 registros por solicitud con límite configurable.
 
-### A05: Security Misconfiguration
+### A05: Configuración de Seguridad Incorrecta
 
-- All configuration from Azure App Configuration with Key Vault references.
-- Container images scanned (Mend) before deployment.
-- HTTP security headers set on all responses.
-- Graph API permissions follow least-privilege: only `User.Read.All` and `User.ReadWrite.All` as needed.
+- Toda la configuración desde Azure App Configuration con referencias a Key Vault.
+- Imágenes de contenedor escaneadas (Mend) antes del despliegue.
+- Encabezados de seguridad HTTP establecidos en todas las respuestas.
+- Los permisos de Graph API siguen el mínimo privilegio: solo `User.Read.All` y `User.ReadWrite.All` según sea necesario.
 
-### A06: Vulnerable and Outdated Components
+### A06: Componentes Vulnerables y Desactualizados
 
-- Mend scanning on every PR; CVSS 7.0+ blocks merge.
-- NuGet packages pinned with lock file validation.
-- Weekly base image rebuild with latest OS patches.
-- SBOM generated for every release.
+- Escaneo Mend en cada PR; CVSS 7.0+ bloquea la fusión.
+- Paquetes NuGet fijados con validación de archivo de bloqueo.
+- Reconstrucción semanal de imagen base con los últimos parches del SO.
+- SBOM generado para cada release.
 
-### A07: Identification and Authentication Failures
+### A07: Fallos de Identificación y Autenticación
 
-- Authentication fully delegated to Auth Service via JWT validation.
-- Session information received via auth events (login/logout).
-- No local authentication implemented; no credential storage.
+- Autenticación completamente delegada al Auth Service mediante validación JWT.
+- Información de sesión recibida mediante eventos de auth (login/logout).
+- No se implementa autenticación local; no hay almacenamiento de credenciales.
 
-### A08: Software and Data Integrity Failures
+### A08: Fallos de Integridad de Software y Datos
 
-- All CI/CD artifacts signed and verified.
-- Published user events include schema version and correlation ID.
-- Consumed auth events validated for schema compliance before processing.
+- Todos los artefactos CI/CD firmados y verificados.
+- Los eventos de usuario publicados incluyen versión de esquema e ID de correlación.
+- Los eventos de auth consumidos se validan para cumplimiento de esquema antes del procesamiento.
 
-### A09: Security Logging and Monitoring
+### A09: Registro de Seguridad y Monitoreo
 
-- All user mutations logged with before/after state for audit.
-- Access to PII fields logged separately in the audit trail.
-- Event processing failures logged with full context for replay.
-- Logs retained for minimum 1 year for compliance.
+- Todas las mutaciones de usuario registradas con estado anterior/posterior para auditoría.
+- El acceso a campos PII se registra por separado en el registro de auditoría.
+- Los fallos de procesamiento de eventos se registran con contexto completo para reproducción.
+- Logs retenidos por mínimo 1 año para cumplimiento.
 
-### A10: Server-Side Request Forgery
+### A10: Falsificación de Solicitud del Lado del Servidor (SSRF)
 
-- All outbound HTTP (Graph API) restricted to `graph.microsoft.com` and `login.microsoftonline.com`.
-- HTTP clients use restricted redirect policies.
-- All outbound requests include timeout and cancellation token.
+- Todo HTTP saliente (Graph API) restringido a `graph.microsoft.com` y `login.microsoftonline.com`.
+- Los clientes HTTP usan políticas de redirección restringidas.
+- Todas las solicitudes salientes incluyen tiempo de espera y token de cancelación.
 
-## Secret Management
+## Gestión de Secretos
 
-- No secrets in code; all secrets in Azure Key Vault accessed via Managed Identity.
-- Per-environment Key Vault instances.
-- Graph API client secret stored in Key Vault with auto-rotation.
-- Database connection strings stored in Key Vault; never in configuration files.
+- Sin secretos en código; todos los secretos en Azure Key Vault accedidos mediante Managed Identity.
+- Instancias de Key Vault por entorno.
+- Secreto de cliente de Graph API almacenado en Key Vault con rotación automática.
+- Cadenas de conexión de base de datos almacenadas en Key Vault; nunca en archivos de configuración.
 
-## PII Data Classification
+## Clasificación de Datos PII
 
-| Data Field | Classification | Encryption | Logging |
+| Campo de Datos | Clasificación | Cifrado | Registro |
 |---|---|---|---|
-| Email | PII | AES-256-GCM at rest | Hashed only |
-| First Name | PII | AES-256-GCM at rest | Never logged |
-| Last Name | PII | AES-256-GCM at rest | Never logged |
-| Phone Number | PII | AES-256-GCM at rest | Never logged |
-| Address | PII | AES-256-GCM at rest | Never logged |
-| User ID (UUID) | Internal | None | Full value |
-| Tenant ID (UUID) | Internal | None | Full value |
-| Roles | Internal | None | Full value |
+| Correo electrónico | PII | AES-256-GCM en reposo | Solo hasheado |
+| Nombre | PII | AES-256-GCM en reposo | Nunca registrado |
+| Apellido | PII | AES-256-GCM en reposo | Nunca registrado |
+| Número de Teléfono | PII | AES-256-GCM en reposo | Nunca registrado |
+| Dirección | PII | AES-256-GCM en reposo | Nunca registrado |
+| ID de Usuario (UUID) | Interno | Ninguno | Valor completo |
+| ID de Inquilino (UUID) | Interno | Ninguno | Valor completo |
+| Roles | Interno | Ninguno | Valor completo |
 
-## Dependency Scanning (Mend)
+## Escaneo de Dependencias (Mend)
 
-- All PRs scanned; CVSS 7.0+ blocks merge.
-- Daily full scan against all dependencies.
-- CVSS 9.0+ alerts trigger immediate notification.
-- Remediation SLA: CVSS 9.0+ within 24 hours, 7.0-8.9 within 7 days, 4.0-6.9 within 30 days.
-- Graph API SDK dependencies monitored for breaking changes.
+- Todos los PRs escaneados; CVSS 7.0+ bloquea la fusión.
+- Escaneo completo diario contra todas las dependencias.
+- Alertas CVSS 9.0+ desencadenan notificación inmediata.
+- SLA de remediación: CVSS 9.0+ dentro de 24 horas, 7.0-8.9 dentro de 7 días, 4.0-6.9 dentro de 30 días.
+- Dependencias del SDK de Graph API monitoreadas para cambios disruptivos.
 
 ## SAST (SonarQube)
 
-- Quality Gate on every PR: coverage >= 80%, no critical/blocker issues.
-- Security hotspots reviewed by security champion every sprint.
-- Custom rules: no hardcoded credentials, no PII in log messages, tenant filter validation on queries.
+- Quality Gate en cada PR: cobertura >= 80%, sin problemas críticos/bloqueantes.
+- Puntos críticos de seguridad revisados por el security champion cada sprint.
+- Reglas personalizadas: sin credenciales codificadas, sin PII en mensajes de log, validación de filtro de inquilino en consultas.
 
-## Threat Modeling
+## Modelado de Amenazas
 
-- **Cadence:** Quarterly full service review; per-feature for new capabilities.
-- **Focus areas:** Tenant isolation bypass, PII data leakage, event processing integrity, Graph API token misuse.
-- **Tool:** OWASP Threat Dragon.
-- **Output:** Threat model document stored in `docs/security/threat-models/`.
+- **Cadencia:** Revisión trimestral completa del servicio; por característica para nuevas capacidades.
+- **Áreas de enfoque:** Omisión de aislamiento de inquilino, fuga de datos PII, integridad del procesamiento de eventos, uso indebido de token de Graph API.
+- **Herramienta:** OWASP Threat Dragon.
+- **Salida:** Documento de modelo de amenazas almacenado en `docs/security/threat-models/`.
 
-## Penetration Testing
+## Pruebas de Penetración
 
-- **Frequency:** Annual full-scope pen test by external third party.
-- **Scope:** All user management endpoints, tenant isolation, RBAC enforcement, PII data handling.
-- **Remediation:** Critical findings within 48 hours, High within 14 days, Medium within 60 days.
+- **Frecuencia:** Prueba de penetración de alcance completo anual por terceros externos.
+- **Alcance:** Todos los endpoints de gestión de usuarios, aislamiento de inquilino, aplicación de RBAC, manejo de datos PII.
+- **Remediación:** Hallazgos críticos dentro de 48 horas, Altos dentro de 14 días, Medios dentro de 60 días.
 
-## Compliance
+## Cumplimiento
 
-- The Users Service must comply with SOC 2 Type II, ISO 27001, GDPR, and CCPA.
-- Data retention enforced: users are soft-deleted (retained for 90 days) then purged.
-- Right to erasure (GDPR Article 17) supported via hard-delete API for Admin role.
-- Data portability (GDPR Article 20) supported via user data export endpoint.
+- El Users Service debe cumplir con SOC 2 Tipo II, ISO 27001, GDPR y CCPA.
+- Retención de datos aplicada: los usuarios se eliminan con soft-delete (retenidos por 90 días) y luego se purgan.
+- Derecho al olvido (Artículo 17 del GDPR) compatible mediante API de hard-delete para rol Admin.
+- Portabilidad de datos (Artículo 20 del GDPR) compatible mediante endpoint de exportación de datos de usuario.

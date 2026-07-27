@@ -1,153 +1,153 @@
-# Risks — Users Service
+# Riesgos — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Overview
+## Visión General
 
-This document catalogs identified risks for the Users Service. Each risk includes severity, likelihood, impact, and planned mitigations. Risks are reviewed quarterly.
+Este documento cataloga los riesgos identificados para el Users Service. Cada riesgo incluye severidad, probabilidad, impacto y mitigaciones planificadas. Los riesgos se revisan trimestralmente.
 
 ---
 
-## Risk Register
+## Registro de Riesgos
 
-### U-R01: Auth Service Unavailable (JWT Validation Fails)
+### U-R01: Auth Service No Disponible (Falla la Validación JWT)
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R01 |
-| **Category** | External Dependency / Availability |
-| **Severity** | Critical |
-| **Likelihood** | Possible |
-| **Impact** | Critical — Users Service cannot validate incoming JWT tokens because the JWKS endpoint is unreachable. Cached JWKS keys provide a 5-minute grace window. After cache expiry, all API requests fail authentication and are rejected. All user management operations are blocked. |
-| **Detection** | JWKS fetch failure alert. Error rate spike on all endpoints. PagerDuty alert on AuthServiceDown cascades to Users Service monitoring. |
-| **Mitigation** | 1. JWKS document cached in memory with 5-minute TTL. Token validation continues during cache lifetime. 2. Retry with exponential backoff on JWKS fetch failure. 3. Users Service health endpoint (`/health`) reflects Auth Service dependency status. 4. Multi-region deployment ensures JWKS fetch can fall back to secondary region endpoint. |
-| **Contingency** | 1. Immediately alert on-call Auth Service team. 2. If outage exceeds 5 minutes, all API calls to Users Service will fail. 3. Consider extending cache TTL if Auth Service RTO exceeds 5 minutes (requires engineering lead approval). 4. Post-incident: verify data consistency and replay missed auth events. |
-| **Recovery Time Objective** | 5 minutes (cached JWKS grace window) |
+| **ID de Riesgo** | U-R01 |
+| **Categoría** | Dependencia Externa / Disponibilidad |
+| **Severidad** | Crítica |
+| **Probabilidad** | Posible |
+| **Impacto** | Crítico — Users Service no puede validar tokens JWT entrantes porque el endpoint JWKS no está accesible. Las claves JWKS en caché proporcionan una ventana de gracia de 5 minutos. Después de la expiración de la caché, todas las solicitudes de API fallan en autenticación y son rechazadas. Todas las operaciones de gestión de usuarios están bloqueadas. |
+| **Detección** | Alerta de fallo de obtención de JWKS. Pico de tasa de error en todos los endpoints. Alerta de PagerDuty en AuthServiceDown se propaga al monitoreo del Users Service. |
+| **Mitigación** | 1. Documento JWKS almacenado en caché en memoria con TTL de 5 minutos. La validación de tokens continúa durante la vida útil de la caché. 2. Reintento con retroceso exponencial en fallo de obtención de JWKS. 3. El endpoint de salud (`/health`) del Users Service refleja el estado de la dependencia del Auth Service. 4. El despliegue multirregión asegura que la obtención de JWKS pueda recurrir al endpoint de la región secundaria. |
+| **Contingencia** | 1. Alertar inmediatamente al equipo de Auth Service de guardia. 2. Si la interrupción excede los 5 minutos, todas las llamadas API al Users Service fallarán. 3. Considerar extender el TTL de la caché si el RTO del Auth Service excede los 5 minutos (requiere aprobación del líder de ingeniería). 4. Post-incidente: verificar consistencia de datos y reproducir eventos de auth perdidos. |
+| **Objetivo de Tiempo de Recuperación** | 5 minutos (ventana de gracia de JWKS en caché) |
 
 ---
 
-### U-R02: PostgreSQL Database Failure
+### U-R02: Fallo de Base de Datos PostgreSQL
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R02 |
-| **Category** | Infrastructure / Dependency |
-| **Severity** | High |
-| **Likelihood** | Unlikely |
-| **Impact** | Major — all user operations fail (create, read, update, delete, list). Event consumption fails (no persistence for incoming events). Existing user JWTs cannot be verified (requires DB for role validation). |
-| **Mitigation** | 1. Zone-redundant HA with automatic failover (< 60 seconds). 2. Connection pooling with retry logic. 3. 35-day point-in-time restore. 4. Read replica in secondary region. |
-| **Contingency** | Initiate zone-redundant failover. If primary region fails, geo-failover to read replica. |
+| **ID de Riesgo** | U-R02 |
+| **Categoría** | Infraestructura / Dependencia |
+| **Severidad** | Alta |
+| **Probabilidad** | Poco probable |
+| **Impacto** | Mayor — todas las operaciones de usuario fallan (crear, leer, actualizar, eliminar, listar). El consumo de eventos falla (sin persistencia para eventos entrantes). Los JWT de usuarios existentes no pueden verificarse (requiere DB para validación de roles). |
+| **Mitigación** | 1. HA redundante por zona con conmutación automática por error (< 60 segundos). 2. Pool de conexiones con lógica de reintento. 3. Restauración puntual de 35 días. 4. Réplica de lectura en región secundaria. |
+| **Contingencia** | Iniciar conmutación por error redundante por zona. Si la región primaria falla, conmutación por error geográfica a réplica de lectura. |
 
 ---
 
-### U-R03: Tenant Isolation Violation
+### U-R03: Violación de Aislamiento de Inquilino
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R03 |
-| **Category** | Security / Data Leakage |
-| **Severity** | Critical |
-| **Likelihood** | Rare |
-| **Impact** | Critical — tenant A users can access tenant B's data. PII exposure, regulatory non-compliance (GDPR), reputational damage. |
-| **Detection** | 1. SQL query logging for anomalous cross-tenant access patterns. 2. Regular penetration testing for tenant isolation. 3. Automated integration tests verify tenant isolation for every endpoint. |
-| **Mitigation** | 1. Tenant isolation enforced in the repository layer: every query includes `WHERE tenant_id = @tenantId`. 2. Tenant ID extracted from JWT claims (not from request body) to prevent tampering. 3. Integration tests for every endpoint validate cross-tenant access is blocked. 4. Database RLS (Row-Level Security) as defense-in-depth. 5. All user identifiers include tenant_id prefix in audit logs. |
+| **ID de Riesgo** | U-R03 |
+| **Categoría** | Seguridad / Fuga de Datos |
+| **Severidad** | Crítica |
+| **Probabilidad** | Rara |
+| **Impacto** | Crítico — usuarios del inquilino A pueden acceder a datos del inquilino B. Exposición de PII, incumplimiento regulatorio (GDPR), daño reputacional. |
+| **Detección** | 1. Registro de consultas SQL para patrones anómalos de acceso entre inquilinos. 2. Pruebas de penetración regulares para aislamiento de inquilino. 3. Pruebas de integración automatizadas verifican el aislamiento de inquilino para cada endpoint. |
+| **Mitigación** | 1. Aislamiento de inquilino aplicado en la capa de repositorio: cada consulta incluye `WHERE tenant_id = @tenantId`. 2. ID de inquilino extraído de los reclamos del JWT (no del cuerpo de la solicitud) para prevenir manipulación. 3. Pruebas de integración para cada endpoint validan que el acceso entre inquilinos esté bloqueado. 4. RLS (Seguridad a Nivel de Fila) de base de datos como defensa en profundidad. 5. Todos los identificadores de usuario incluyen prefijo tenant_id en los registros de auditoría. |
 
 ---
 
-### U-R04: Microsoft Graph API Throttling or Outage
+### U-R04: Limitación de Tasa o Interrupción de Microsoft Graph API
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R04 |
-| **Category** | External Dependency |
-| **Severity** | Medium |
-| **Likelihood** | Possible |
-| **Impact** | Moderate — profile enrichment is delayed or skipped. User profiles are served with locally-stored data (may be stale). |
-| **Mitigation** | 1. Graph API responses cached for 1 hour. 2. Retry with exponential backoff on throttling (Retry-After header). 3. Profile enrichment is async and non-blocking; user CRUD operations are not affected. 4. Circuit breaker pattern prevents cascading failures. |
+| **ID de Riesgo** | U-R04 |
+| **Categoría** | Dependencia Externa |
+| **Severidad** | Media |
+| **Probabilidad** | Posible |
+| **Impacto** | Moderado — el enriquecimiento de perfil se retrasa o se omite. Los perfiles de usuario se sirven con datos almacenados localmente (pueden estar desactualizados). |
+| **Mitigación** | 1. Respuestas de Graph API almacenadas en caché por 1 hora. 2. Reintento con retroceso exponencial en limitación de tasa (encabezado Retry-After). 3. El enriquecimiento de perfil es asíncrono y no bloqueante; las operaciones CRUD de usuario no se ven afectadas. 4. Patrón de disyuntor (circuit breaker) previene fallos en cascada. |
 
 ---
 
-### U-R05: Event Processing Backlog
+### U-R05: Acumulación de Procesamiento de Eventos
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R05 |
-| **Category** | Processing / Latency |
-| **Severity** | Medium |
-| **Likelihood** | Possible |
-| **Impact** | Moderate — auth events (login/logout) are not processed in real-time. User session state becomes stale. Login events may be processed after token expiry, causing inconsistent state. |
-| **Detection** | 1. `users_auth_events_lag_seconds` metric alerts when lag exceeds threshold. 2. DLQ depth monitoring. |
-| **Mitigation** | 1. Event consumers run as independent background services with configurable parallelism. 2. Each event consumer has its own processing pipeline (no cross-event blocking). 3. Events are idempotent: processing the same event twice is safe. 4. Autoscaling for event consumers based on queue depth. |
+| **ID de Riesgo** | U-R05 |
+| **Categoría** | Procesamiento / Latencia |
+| **Severidad** | Media |
+| **Probabilidad** | Posible |
+| **Impacto** | Moderado — los eventos de auth (login/logout) no se procesan en tiempo real. El estado de sesión del usuario se vuelve obsoleto. Los eventos de login pueden procesarse después de la expiración del token, causando estado inconsistente. |
+| **Detección** | 1. La métrica `users_auth_events_lag_seconds` alerta cuando el retraso supera el umbral. 2. Monitoreo de profundidad de DLQ. |
+| **Mitigación** | 1. Los consumidores de eventos se ejecutan como servicios en segundo plano independientes con paralelismo configurable. 2. Cada consumidor de eventos tiene su propio pipeline de procesamiento (sin bloqueo entre eventos). 3. Los eventos son idempotentes: procesar el mismo evento dos veces es seguro. 4. Autoescalado para consumidores de eventos basado en la profundidad de la cola. |
 
 ---
 
-### U-R06: Data Loss from Soft-Delete Purge Job
+### U-R06: Pérdida de Datos por Trabajo de Purga de Soft-Delete
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R06 |
-| **Category** | Data Integrity |
-| **Severity** | High |
-| **Likelihood** | Unlikely |
-| **Impact** | Major — incorrectly configured purge job permanently deletes user data that should have been retained. Regulatory non-compliance if retention requirements are violated. |
-| **Detection** | 1. Purge job counts logged before and after execution. 2. Anomalous purge volume triggers manual review. 3. Audit log of all purged records. |
-| **Mitigation** | 1. Dry-run mode: preview records to be purged before actual deletion. 2. Configurable retention period (default: 90 days). 3. Maximum batch size per execution to limit blast radius. 4. Purge job requires manual confirmation in production. 5. Database backup exists before purge execution. |
+| **ID de Riesgo** | U-R06 |
+| **Categoría** | Integridad de Datos |
+| **Severidad** | Alta |
+| **Probabilidad** | Poco probable |
+| **Impacto** | Mayor — un trabajo de purga configurado incorrectamente elimina permanentemente datos de usuario que deberían haberse retenido. Incumplimiento regulatorio si se violan los requisitos de retención. |
+| **Detección** | 1. Conteos del trabajo de purga registrados antes y después de la ejecución. 2. Volumen de purga anómalo desencadena revisión manual. 3. Registro de auditoría de todos los registros purgados. |
+| **Mitigación** | 1. Modo de simulación (dry-run): previsualizar registros a purgar antes de la eliminación real. 2. Período de retención configurable (por defecto: 90 días). 3. Tamaño máximo de lote por ejecución para limitar el radio de explosión. 4. El trabajo de purga requiere confirmación manual en producción. 5. Existe respaldo de base de datos antes de la ejecución de la purga. |
 
 ---
 
-### U-R07: Event Schema Incompatibility
+### U-R07: Incompatibilidad de Esquema de Eventos
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R07 |
-| **Category** | Integration |
-| **Severity** | Medium |
-| **Likelihood** | Unlikely |
-| **Impact** | Major — if Auth Service publishes auth events with a new schema that Users Service cannot parse, all event processing fails. User session state becomes permanently stale until the issue is resolved. |
-| **Detection** | 1. Event deserialization failure rate monitored. 2. Error rate spike in event consumer. |
-| **Mitigation** | 1. Events include schema version number. 2. Schema version negotiation: consumers declare supported versions, producers use the highest mutually supported version. 3. Backward-compatible schema evolution: new fields are optional, never removed. 4. Integration tests between Auth Service and Users Service event schemas run in CI. |
+| **ID de Riesgo** | U-R07 |
+| **Categoría** | Integración |
+| **Severidad** | Media |
+| **Probabilidad** | Poco probable |
+| **Impacto** | Mayor — si Auth Service publica eventos de auth con un nuevo esquema que Users Service no puede analizar, todo el procesamiento de eventos falla. El estado de sesión del usuario se vuelve permanentemente obsoleto hasta que se resuelva el problema. |
+| **Detección** | 1. Tasa de fallo de deserialización de eventos monitoreada. 2. Pico de tasa de error en el consumidor de eventos. |
+| **Mitigación** | 1. Los eventos incluyen número de versión del esquema. 2. Negociación de versión de esquema: los consumidores declaran versiones compatibles, los productores usan la versión mutuamente compatible más alta. 3. Evolución de esquema compatible hacia atrás: los nuevos campos son opcionales, nunca se eliminan. 4. Pruebas de integración entre los esquemas de eventos de Auth Service y Users Service ejecutadas en CI. |
 
 ---
 
-### U-R08: RBAC Permission Escalation
+### U-R08: Escalación de Permisos RBAC
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R08 |
-| **Category** | Security |
-| **Severity** | High |
-| **Likelihood** | Rare |
-| **Impact** | Major — user with Operator role escalates to Admin role and gains unauthorized access to tenant configuration or user data. |
-| **Detection** | 1. Role change events logged and monitored. 2. Anomaly detection on role assignments. 3. Audit trail requires justification for role changes to Admin. |
-| **Mitigation** | 1. Role changes require multi-step approval (Admin approves Operator role changes, separate Admin approves Admin role changes). 2. Role assignment is logged with actor identity and timestamp. 3. Principle of least privilege: default role is User, escalation requires explicit approval. 4. Automated tests verify role hierarchy is enforced. |
+| **ID de Riesgo** | U-R08 |
+| **Categoría** | Seguridad |
+| **Severidad** | Alta |
+| **Probabilidad** | Rara |
+| **Impacto** | Mayor — un usuario con rol Operator escala al rol Admin y obtiene acceso no autorizado a la configuración del inquilino o datos de usuario. |
+| **Detección** | 1. Eventos de cambio de rol registrados y monitoreados. 2. Detección de anomalías en asignaciones de roles. 3. El registro de auditoría requiere justificación para cambios de rol a Admin. |
+| **Mitigación** | 1. Los cambios de rol requieren aprobación de múltiples pasos (Admin aprueba cambios de rol de Operator, Admin separado aprueba cambios de rol de Admin). 2. La asignación de roles se registra con identidad del actor y marca de tiempo. 3. Principio de mínimo privilegio: el rol por defecto es User, la escalación requiere aprobación explícita. 4. Las pruebas automatizadas verifican que se aplique la jerarquía de roles. |
 
 ---
 
-### U-R09: Team Bus Factor
+### U-R09: Factor de Riesgo del Equipo (Bus Factor)
 
-| Attribute | Value |
+| Atributo | Valor |
 |---|---|
-| **Risk ID** | U-R09 |
-| **Category** | Organization |
-| **Severity** | Medium |
-| **Likelihood** | Unlikely |
-| **Impact** | Major — loss of key team members familiar with tenant isolation, event processing, and Graph API integration. |
-| **Mitigation** | 1. Infrastructure as code (Terraform, Helm). 2. Comprehensive runbooks for incident response and operations. 3. Code review ensures multiple team members understand each component. 4. Cross-training sessions every sprint. 5. On-call rotation for operational experience. |
+| **ID de Riesgo** | U-R09 |
+| **Categoría** | Organizacional |
+| **Severidad** | Media |
+| **Probabilidad** | Poco probable |
+| **Impacto** | Mayor — pérdida de miembros clave del equipo familiarizados con aislamiento de inquilino, procesamiento de eventos e integración con Graph API. |
+| **Mitigación** | 1. Infraestructura como código (Terraform, Helm). 2. Runbooks completos para respuesta a incidentes y operaciones. 3. La revisión de código asegura que múltiples miembros del equipo entiendan cada componente. 4. Sesiones de capacitación cruzada cada sprint. 5. Rotación de guardia para experiencia operativa. |
 
 ---
 
-## Risk Summary
+## Resumen de Riesgos
 
-| ID | Description | Severity | Likelihood | Impact | Mitigation |
+| ID | Descripción | Severidad | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|---|---|
-| U-R01 | Auth Service unavailable | Critical | Possible | Critical | Cached JWKS (5-min grace) |
-| U-R02 | PostgreSQL failure | High | Unlikely | Major | Zone-redundant HA, read replica |
-| U-R03 | Tenant isolation violation | Critical | Rare | Critical | Repository-layer enforcement, RLS |
-| U-R04 | Graph API throttling | Medium | Possible | Moderate | Caching, circuit breaker |
-| U-R05 | Event processing backlog | Medium | Possible | Moderate | Autoscaling, idempotent events |
-| U-R06 | Purge job data loss | High | Unlikely | Major | Dry-run, manual confirmation |
-| U-R07 | Event schema incompatibility | Medium | Unlikely | Major | Schema versioning |
-| U-R08 | RBAC permission escalation | High | Rare | Major | Multi-step approval, audit |
-| U-R09 | Team bus factor | Medium | Unlikely | Major | Documentation, cross-training |
+| U-R01 | Auth Service no disponible | Crítica | Posible | Crítico | JWKS en caché (gracia de 5 min) |
+| U-R02 | Fallo de PostgreSQL | Alta | Poco probable | Mayor | HA redundante por zona, réplica de lectura |
+| U-R03 | Violación de aislamiento de inquilino | Crítica | Rara | Crítico | Aplicación en capa de repositorio, RLS |
+| U-R04 | Limitación de Graph API | Media | Posible | Moderado | Caché, disyuntor |
+| U-R05 | Acumulación de procesamiento de eventos | Media | Posible | Moderado | Autoescalado, eventos idempotentes |
+| U-R06 | Pérdida de datos por purga | Alta | Poco probable | Mayor | Simulación, confirmación manual |
+| U-R07 | Incompatibilidad de esquema de eventos | Media | Poco probable | Mayor | Versionado de esquema |
+| U-R08 | Escalación de permisos RBAC | Alta | Rara | Mayor | Aprobación multi-paso, auditoría |
+| U-R09 | Factor de riesgo del equipo | Media | Poco probable | Mayor | Documentación, capacitación cruzada |

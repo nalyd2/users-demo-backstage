@@ -1,105 +1,105 @@
-# Versioning Strategy — Users Service
+# Estrategia de Versionado — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Overview
+## Visión General
 
-This document defines the versioning strategy for all artifacts produced by the Users Service. It follows Semantic Versioning 2.0.0 with adaptations for the users domain, including API versioning for user management endpoints.
+Este documento define la estrategia de versionado para todos los artefactos producidos por el Users Service. Sigue Semantic Versioning 2.0.0 con adaptaciones para el dominio de usuarios, incluyendo versionado de API para endpoints de gestión de usuarios.
 
-## MAJOR.MINOR.PATCH Rules
+## Reglas MAJOR.MINOR.PATCH
 
-### PATCH — Incremented When
+### PATCH — Se Incrementa Cuando
 
-- Backward-compatible bug fixes in user CRUD operations, tenant management, or event processing.
-- Security patches for data access or Graph API integration.
-- Dependency updates (NuGet packages, base container images).
-- Observability improvements (logging, metrics, tracing).
+- Correcciones de errores compatibles hacia atrás en operaciones CRUD de usuario, gestión de inquilinos o procesamiento de eventos.
+- Parches de seguridad para acceso a datos o integración con Graph API.
+- Actualizaciones de dependencias (paquetes NuGet, imágenes base de contenedor).
+- Mejoras de observabilidad (logs, métricas, trazabilidad).
 
-### MINOR — Incremented When
+### MINOR — Se Incrementa Cuando
 
-- New user management endpoints (backward-compatible).
-- New event types published or consumed.
-- Additional profile fields in user responses.
-- New RBAC roles or permission scopes.
-- Deprecation warnings for existing features.
-- Configuration options with safe defaults (disabled by default).
+- Nuevos endpoints de gestión de usuarios (compatibles hacia atrás).
+- Nuevos tipos de eventos publicados o consumidos.
+- Campos de perfil adicionales en respuestas de usuario.
+- Nuevos roles RBAC o ámbitos de permiso.
+- Advertencias de obsolescencia para características existentes.
+- Opciones de configuración con valores predeterminados seguros (deshabilitados por defecto).
 
-### MAJOR — Incremented When
+### MAJOR — Se Incrementa Cuando
 
-- Breaking changes to user schema or response format.
-- Removal of deprecated endpoints or fields.
-- Changes to soft-delete semantics.
-- Breaking changes to published event schemas.
-- Database migrations that are not backward-compatible.
-- Dropping support for a previously supported API version.
+- Cambios disruptivos en el esquema de usuario o formato de respuesta.
+- Eliminación de endpoints o campos obsoletos.
+- Cambios en la semántica de soft-delete.
+- Cambios disruptivos en esquemas de eventos publicados.
+- Migraciones de base de datos que no son compatibles hacia atrás.
+- Dejar de soportar una versión de API previamente compatible.
 
-### Pre-release Labels
+### Etiquetas de Pre-lanzamiento
 
-| Label | Use |
+| Etiqueta | Uso |
 |---|---|
-| `-alpha.N` | Internal development, API unstable |
-| `-beta.N` | Feature-complete for specific feature, only bug fixes before GA |
-| `-rc.N` | Release candidate for QA validation |
+| `-alpha.N` | Desarrollo interno, API inestable |
+| `-beta.N` | Característica completa para funcionalidad específica, solo correcciones de errores antes de GA |
+| `-rc.N` | Candidato de release para validación de QA |
 
-## API Versioning
+## Versionado de API
 
-The Users Service API uses URL path versioning:
+La API del Users Service utiliza versionado en la ruta URL:
 
 ```
 https://users.example.com/api/v1/users
 https://users.example.com/api/v2/users
 ```
 
-### Rules
+### Reglas
 
-- Version prefix applies to entire API surface (`/api/v1/`, `/api/v2/`).
-- Support at most two MAJOR versions simultaneously.
-- Previous version receives security patches for minimum 6 months after deprecation.
-- Internal endpoints (health, metrics, probes) are not versioned.
+- El prefijo de versión aplica a toda la superficie de API (`/api/v1/`, `/api/v2/`).
+- Soporte de como máximo dos versiones MAJOR simultáneamente.
+- La versión anterior recibe parches de seguridad por mínimo 6 meses después de la obsolescencia.
+- Los endpoints internos (salud, métricas, sondas) no tienen versionado.
 
-### Version Lifecycle
+### Ciclo de Vida de la Versión
 
-| Phase | Behavior |
+| Fase | Comportamiento |
 |---|---|
-| **Active** | Full support, bug fixes, security patches |
-| **Deprecated** | Still served with `Sunset` header, consumers encouraged to migrate |
-| **Sunset** | Returns `410 Gone`, migration guide remains available |
+| **Activa** | Soporte completo, correcciones de errores, parches de seguridad |
+| **Obsoleta** | Aún servida con encabezado `Sunset`, se anima a los consumidores a migrar |
+| **Retirada** | Devuelve `410 Gone`, la guía de migración permanece disponible |
 
-## Changelog
+## Registro de Cambios (Changelog)
 
-Every release MUST include an entry in `CHANGELOG.md` following Keep a Changelog format:
+Cada release DEBE incluir una entrada en `CHANGELOG.md` siguiendo el formato Keep a Changelog:
 
 ```markdown
 ## [v2.3.0] - 2026-06-15
 
-### Added
-- Microsoft Graph profile enrichment endpoint: `GET /api/v2/users/{id}/graph-profile`. (#142)
-- Event processing lag metric for auth event consumers. (#155)
+### Añadido
+- Endpoint de enriquecimiento de perfil de Microsoft Graph: `GET /api/v2/users/{id}/graph-profile`. (#142)
+- Métrica de retraso de procesamiento de eventos para consumidores de eventos de auth. (#155)
 
-### Changed
-- Upgrade from .NET 9 to .NET 10. (#168)
+### Cambiado
+- Actualización de .NET 9 a .NET 10. (#168)
 
-### Deprecated
-- `GET /api/v1/users` (non-paginated). Use `GET /api/v2/users` with cursor pagination. (#150)
-  Support will be removed in v3.0.0.
+### Obsoleto
+- `GET /api/v1/users` (no paginado). Usar `GET /api/v2/users` con paginación por cursor. (#150)
+  El soporte se eliminará en v3.0.0.
 
-### Fixed
-- Soft-delete filter missing from tenant-scoped user queries. (#89)
+### Corregido
+- Filtro de soft-delete faltante en consultas de usuario con ámbito de inquilino. (#89)
 ```
 
-## Deprecation Policy
+## Política de Obsolescencia
 
-- Features deprecated for at least one full MAJOR version cycle before removal.
-- Deprecated features return `Sunset` and `Deprecation` headers.
-- Deprecation announced in changelog and API reference documentation.
-- Security vulnerabilities may be removed without standard deprecation period.
+- Las características se declaran obsoletas durante al menos un ciclo completo de versión MAJOR antes de su eliminación.
+- Las características obsoletas devuelven encabezados `Sunset` y `Deprecation`.
+- La obsolescencia se anuncia en el changelog y la documentación de referencia de API.
+- Las vulnerabilidades de seguridad pueden eliminarse sin el período de obsolescencia estándar.
 
-## Container Image Tagging
+## Etiquetado de Imágenes de Contenedor
 
-- `v<MAJOR>.<MINOR>.<PATCH>` — Immutable release tag.
-- `v<MAJOR>.<MINOR>` — Mutable, updated with each patch.
-- `v<MAJOR>` — Mutable, updated with latest in that major series.
-- `latest` — Mutable, always latest stable release.
-- `sha-<commit-sha>` — Immutable per-commit tag.
+- `v<MAJOR>.<MINOR>.<PATCH>` — Tag de release inmutable.
+- `v<MAJOR>.<MINOR>` — Modificable, actualizado con cada patch.
+- `v<MAJOR>` — Modificable, actualizado con el último de esa serie MAJOR.
+- `latest` — Modificable, siempre el último release estable.
+- `sha-<commit-sha>` — Tag por commit inmutable.

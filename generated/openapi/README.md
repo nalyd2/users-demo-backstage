@@ -1,19 +1,19 @@
-# Generated OpenAPI Artifacts
+# Artefactos OpenAPI Generados
 
-This directory is populated by the CI/CD pipeline during the **Generate OpenAPI** stage.
+Este directorio es poblado por el pipeline CI/CD durante la etapa **Generar OpenAPI**.
 
-## Generated Files
+## Archivos Generados
 
-| Artifact | Description |
+| Artefacto | Descripción |
 |---|---|
-| `users-service-openapi.yaml` | Bundled OpenAPI 3.1 spec with all `$ref` resolved |
-| `users-service-openapi.json` | JSON version for tool compatibility |
-| `users-service-client-csharp/` | Auto-generated C# client SDK (via Kiota) |
-| `users-service-client-typescript/` | Auto-generated TypeScript client SDK |
+| `users-service-openapi.yaml` | Especificación OpenAPI 3.1 empaquetada con todas las `$ref` resueltas |
+| `users-service-openapi.json` | Versión JSON para compatibilidad con herramientas |
+| `users-service-client-csharp/` | SDK de cliente C# generado automáticamente (vía Kiota) |
+| `users-service-client-typescript/` | SDK de cliente TypeScript generado automáticamente |
 
 ## Pipeline
 
-See [`generated/README.md`](../README.md) for the full pipeline definition.
+Consulte [`generated/README.md`](../README.md) para la definición completa del pipeline.
 
 ```yaml
 # Azure DevOps task excerpt
@@ -26,4 +26,4 @@ See [`generated/README.md`](../README.md) for the full pipeline definition.
   displayName: "Bundle OpenAPI spec"
 ```
 
-**These files are not committed to the repository.**
+**Estos archivos no están confirmados en el repositorio.**

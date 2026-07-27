@@ -1,11 +1,11 @@
-# Generated Topology Data
+# Datos de Topología Generados
 
-Infrastructure and dependency graphs produced by CI/CD for the Users Service.
+Grafos de infraestructura y dependencias producidos por CI/CD para el Servicio de Usuarios.
 
-| Artifact | Description |
+| Artefacto | Descripción |
 |---|---|
-| `dependency-graph.json` | Service dependency graph for Backstage visualization — users-service depends on auth-service, consumes auth-api, uses PostgreSQL users-database, and subscribes to Service Bus auth-events |
-| `network-policy-report.json` | Kubernetes network policy compliance — validates that only API Gateway and allowed services can reach the Users Service pods |
-| `component-map.svg` | Auto-generated C4 component diagram showing the Users Web API, Event Consumer, Profile Sync Worker, and their connections to PostgreSQL, Auth Service, Service Bus, and Azure AD |
+| `dependency-graph.json` | Grafo de dependencias del servicio para visualización en Backstage — users-service depende de auth-service, consume auth-api, usa la base de datos PostgreSQL users-database y se suscribe a los eventos de Service Bus auth-events |
+| `network-policy-report.json` | Cumplimiento de políticas de red de Kubernetes — valida que solo API Gateway y los servicios permitidos puedan alcanzar los pods del Servicio de Usuarios |
+| `component-map.svg` | Diagrama de componentes C4 generado automáticamente que muestra la API Web de Usuarios, el Consumidor de Eventos, el Trabajador de Sincronización de Perfiles y sus conexiones con PostgreSQL, Auth Service, Service Bus y Azure AD |
 
-**Not committed.**
+**No confirmado en el repositorio.**

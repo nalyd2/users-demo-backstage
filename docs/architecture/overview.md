@@ -1,95 +1,95 @@
-# Architecture Overview
+# Visión General de la Arquitectura
 
-## Executive Summary
+## Resumen Ejecutivo
 
-The **Users Service** (`users-service`) manages the complete user lifecycle for the Internal Developer Platform (IDP). It provides CRUD operations for user profiles, enforces role-based access control via JWT validation against the [Authentication Service](https://backstage.internal/platform/component/auth-service), and consumes authentication events to maintain real-time user activity state.
+El **Users Service** (`users-service`) gestiona el ciclo de vida completo de los usuarios para la Plataforma Interna para Desarrolladores (IDP, por sus siglas en inglés). Proporciona operaciones CRUD para perfiles de usuario, aplica control de acceso basado en roles mediante validación JWT contra el [Authentication Service](https://backstage.internal/platform/component/auth-service), y consume eventos de autenticación para mantener el estado de actividad del usuario en tiempo real.
 
-## Platform Position
+## Posición en la Plataforma
 
 ```mermaid
 C4Context
     title System Context — Users Service in the IDP
 
-    Person(operator, "Platform Operator", "Manages user accounts<br/>and permissions")
+    Person(operator, "Platform Operator", "Gestiona cuentas de usuario<br/>y permisos")
 
     System_Boundary(idp, "Internal Developer Platform") {
-        System(users_service, "Users Service", "User profile CRUD,<br/>lifecycle management,<br/>role assignments.")
-        System(auth_service, "Authentication Service", "Issues and validates<br/>JWTs. Publishes auth<br/>events.")
-        System(gateway, "API Gateway", "Routes requests.<br/>Validates JWTs at edge.")
-        System(notification_svc, "Notification Service", "Sends welcome emails,<br/>password reset links.")
+        System(users_service, "Users Service", "CRUD de perfiles de usuario,<br/>gestión del ciclo de vida,<br/>asignación de roles.")
+        System(auth_service, "Authentication Service", "Emite y valida<br/>JWTs. Publica eventos<br/>de autenticación.")
+        System(gateway, "API Gateway", "Enruta solicitudes.<br/>Valida JWTs en el borde.")
+        System(notification_svc, "Notification Service", "Envía correos de bienvenida,<br/>enlaces de restablecimiento de contraseña.")
     }
 
-    System_Ext(azure_ad, "Azure AD / Entra ID", "Corporate directory.<br/>Source of truth for<br/>employee identity.")
-    System_Ext(service_bus, "Azure Service Bus", "Message broker for<br/>async event delivery.")
+    System_Ext(azure_ad, "Azure AD / Entra ID", "Directorio corporativo.<br/>Fuente de verdad para<br/>la identidad del empleado.")
+    System_Ext(service_bus, "Azure Service Bus", "Broker de mensajes para<br/>entrega de eventos asíncrona.")
 
-    Rel(operator, gateway, "Manages users via", "HTTPS + JWT")
-    Rel(gateway, users_service, "Routes requests to", "mTLS")
-    Rel(users_service, auth_service, "Validates JWT with", "gRPC / mTLS")
-    Rel(auth_service, service_bus, "Publishes auth events to", "AMQP")
-    Rel(service_bus, users_service, "Delivers events to", "AMQP")
-    Rel(users_service, azure_ad, "Enriches profiles from", "Microsoft Graph API")
-    Rel(users_service, notification_svc, "Triggers notifications via", "gRPC")
+    Rel(operator, gateway, "Gestiona usuarios mediante", "HTTPS + JWT")
+    Rel(gateway, users_service, "Enruta solicitudes a", "mTLS")
+    Rel(users_service, auth_service, "Valida JWT con", "gRPC / mTLS")
+    Rel(auth_service, service_bus, "Publica eventos de autenticación en", "AMQP")
+    Rel(service_bus, users_service, "Entrega eventos a", "AMQP")
+    Rel(users_service, azure_ad, "Enriquece perfiles desde", "Microsoft Graph API")
+    Rel(users_service, notification_svc, "Dispara notificaciones mediante", "gRPC")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="2")
 ```
 
-## Design Principles
+## Principios de Diseño
 
-| Principle | Implementation |
+| Principio | Implementación |
 |---|---|
-| **API-First Design** | OpenAPI specification is the source of truth; code is generated from spec |
-| **Defense in Depth** | JWT validated at API Gateway AND at service level |
-| **Stateless Compute** | Any instance can serve any request; session affinity not required |
-| **Eventual Consistency** | User state synchronized across services via domain events |
-| **Soft-Delete by Default** | Users are never hard-deleted; `deleted_at` flag preserves referential integrity |
-| **Multi-Tenancy** | All queries include `tenant_id` discriminator for data isolation |
+| **API-First Design** | La especificación OpenAPI es la fuente de verdad; el código se genera a partir de la especificación |
+| **Defense in Depth** | JWT validado en el API Gateway Y a nivel de servicio |
+| **Stateless Compute** | Cualquier instancia puede atender cualquier solicitud; no se requiere afinidad de sesión |
+| **Eventual Consistency** | El estado del usuario se sincroniza entre servicios mediante eventos de dominio |
+| **Soft-Delete por Defecto** | Los usuarios nunca se eliminan físicamente; la marca `deleted_at` preserva la integridad referencial |
+| **Multi-Tenancy** | Todas las consultas incluyen el discriminador `tenant_id` para el aislamiento de datos |
 
-## Architecture Style
+## Estilo Arquitectónico
 
-The service follows a **microservice architecture** with:
+El servicio sigue una **arquitectura de microservicios** con:
 
-- **Hexagonal Architecture** (Ports & Adapters) pattern
-- **Repository Pattern** with Dapper for data access
-- **Event-Driven** consumer for Auth Service events (login/logout)
-- **API-First** design — OpenAPI 3.1 specification drives implementation
+- **Arquitectura Hexagonal** (Puertos y Adaptadores)
+- **Patrón Repositorio** con Dapper para acceso a datos
+- **Consumidor basado en Eventos** para eventos del Auth Service (inicio/cierre de sesión)
+- **Diseño API-First** — la especificación OpenAPI 3.1 guía la implementación
 
-## Dependency on Authentication Service
+## Dependencia del Authentication Service
 
-The Users Service has a **hard runtime dependency** on the Authentication Service:
+El Users Service tiene una **dependencia crítica en tiempo de ejecución** del Authentication Service:
 
 ```
 Users Service ──DependsOn──▶ Authentication Service
      │                              │
-     │  JWT Validation              │  JWT Issuance
-     │  (every request)             │  (on login)
+     │  Validación JWT              │  Emisión de JWT
+     │  (cada solicitud)            │  (al iniciar sesión)
      │                              │
-     │  Event Consumption           │  Event Publication
-     │  (user.login, user.logout)   │  (to Service Bus)
+     │  Consumo de Eventos          │  Publicación de Eventos
+     │  (user.login, user.logout)   │  (en Service Bus)
 ```
 
-**Failure mode:** If the Auth Service is unreachable, JWT validation falls back to a local JWKS cache (5-minute TTL). After the cache expires, all authenticated requests fail with `503 Service Unavailable`.
+**Modo de fallo:** Si el Auth Service no está disponible, la validación JWT recurre a una caché JWKS local (TTL de 5 minutos). Después de que expire la caché, todas las solicitudes autenticadas fallarán con `503 Service Unavailable`.
 
-Full details: [System Context](context.md) and [Dependencies](../decisions/dependencies.md).
+Detalles completos: [Contexto del Sistema](context.md) y [Dependencias](../decisions/dependencies.md).
 
-## Technology Stack Summary
+## Resumen del Stack Tecnológico
 
-| Layer | Technology | Version |
+| Capa | Tecnología | Versión |
 |---|---|---|
 | Runtime | .NET | 10.0 |
-| Language | C# | 13 |
-| API Framework | ASP.NET Core Minimal APIs | 10.0 |
-| Database | PostgreSQL | 16 |
-| Messaging | Azure Service Bus | — |
-| Auth Integration | gRPC client to Auth Service | — |
-| Observability | OpenTelemetry + Prometheus + Grafana | — |
-| Secrets | Azure Key Vault | — |
+| Lenguaje | C# | 13 |
+| Framework API | ASP.NET Core Minimal APIs | 10.0 |
+| Base de datos | PostgreSQL | 16 |
+| Mensajería | Azure Service Bus | — |
+| Integración de Autenticación | Cliente gRPC para Auth Service | — |
+| Observabilidad | OpenTelemetry + Prometheus + Grafana | — |
+| Secretos | Azure Key Vault | — |
 
-Full details: [Technology Stack](technology-stack.md)
+Detalles completos: [Stack Tecnológico](technology-stack.md)
 
-## Related Documents
+## Documentos Relacionados
 
-- [System Context](context.md) — detailed external system interactions
-- [Container View](containers.md) — runtime containers and data stores
-- [Component View](components.md) — internal component design
-- [Security Architecture](security.md) — threat model and JWT validation flow
-- [ADR-002 — JWT Validation at Gateway vs. Service Level](../adr/ADR-002.md)
+- [Contexto del Sistema](context.md) — interacciones detalladas con sistemas externos
+- [Vista de Contenedores](containers.md) — contenedores en tiempo de ejecución y almacenes de datos
+- [Vista de Componentes](components.md) — diseño interno de componentes
+- [Arquitectura de Seguridad](security.md) — modelo de amenazas y flujo de validación JWT
+- [ADR-002 — Validación JWT a Nivel de Gateway vs. Servicio](../adr/ADR-002.md)

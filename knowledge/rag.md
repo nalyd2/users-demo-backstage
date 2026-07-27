@@ -1,86 +1,86 @@
-# RAG Pipeline Architecture
+# Arquitectura del Pipeline RAG
 
-## Overview
+## Descripcion General
 
-The Retrieval-Augmented Generation (RAG) pipeline combines semantic search over documentation with LLM generation to answer user questions about the Users Service.
+El pipeline de Generacion Aumentada por Recuperacion (RAG) combina busqueda semantica sobre documentacion con generacion de LLM para responder preguntas de los usuarios sobre el Servicio de Usuarios.
 
-## Architecture
+## Arquitectura
 
 ```
-User Query: "How do I assign a new role to an existing user?"
+Consulta del Usuario: "Como asigno un nuevo rol a un usuario existente?"
     │
     ▼
-Query Rewriting (LLM)
-    │  Expands: "Users Service role assignment procedure RBAC profile update"
+Reescritura de Consulta (LLM)
+    │  Expande: "procedimiento de asignacion de roles del Servicio de Usuarios actualizacion de perfil RBAC"
     ▼
-Vector Search (Azure AI Search)
-    │  Top-K = 10 chunks, cosine similarity > 0.75
+Busqueda Vectorial (Azure AI Search)
+    │  Top-K = 10 fragmentos, similitud de coseno > 0.75
     ▼
-Re-ranking (Cross-encoder)
-    │  Cohere Rerank or Azure AI Search semantic ranker
+Re-clasificacion (Cross-encoder)
+    │  Cohere Rerank o clasificador semantico de Azure AI Search
     ▼
-Context Assembly
-    │  Top 5 chunks + their surrounding context
+Ensamblaje de Contexto
+    │  Top 5 fragmentos + su contexto circundante
     ▼
-LLM Generation (GPT-4o or Claude)
-    │  System prompt + retrieved context + user query
+Generacion LLM (GPT-4o o Claude)
+    │  Prompt de sistema + contexto recuperado + consulta del usuario
     ▼
-Response + Citations
-    │  Answer with links to source documents
+Respuesta + Citas
+    │  Respuesta con enlaces a los documentos fuente
     ▼
-Delivered to user (Backstage chat, Slack bot, etc.)
+Entregada al usuario (chat de Backstage, bot de Slack, etc.)
 ```
 
-## Retrieval Parameters
+## Parametros de Recuperacion
 
-| Parameter | Value | Rationale |
+| Parametro | Valor | Justificacion |
 |---|---|---|
-| **Top-K (initial)** | 10 | Broad enough to capture related concepts (RBAC, JWT validation, tenant isolation) |
-| **Similarity threshold** | 0.75 | Filters irrelevant results |
-| **Top-N (after rerank)** | 5 | Fits within LLM context window |
-| **Context window** | 8K tokens | Matches model's effective context |
+| **Top-K (inicial)** | 10 | Suficientemente amplio para capturar conceptos relacionados (RBAC, validacion JWT, aislamiento de inquilinos) |
+| **Umbral de similitud** | 0.75 | Filtra resultados irrelevantes |
+| **Top-N (despues de re-clasificacion)** | 5 | Cabe dentro de la ventana de contexto del LLM |
+| **Ventana de contexto** | 8K tokens | Coincide con el contexto efectivo del modelo |
 
-## System Prompt Template
+## Plantilla de Prompt de Sistema
 
 ```
-You are an AI assistant for the Internal Developer Platform — Users Service domain.
-Answer questions using ONLY the documentation provided below.
+Eres un asistente de IA para la Plataforma Interna de Desarrolladores -- dominio del Servicio de Usuarios.
+Responde preguntas usando SOLAMENTE la documentacion proporcionada a continuacion.
 
-If the answer is not in the documentation, say:
-"I don't have enough information in the documentation to answer that.
-You can find more details at: [link to relevant TechDocs section]."
+Si la respuesta no esta en la documentacion, di:
+"No tengo suficiente informacion en la documentacion para responder eso.
+Puedes encontrar mas detalles en: [enlace a la seccion de TechDocs relevante]."
 
-Documentation:
+Documentacion:
 {retrieved_chunks}
 
-User question: {query}
+Pregunta del usuario: {query}
 ```
 
-## Grounding & Citation
+## Fundamentacion y Citas
 
-Every answer includes citations to source documents:
+Cada respuesta incluye citas a los documentos fuente:
 
 ```
-Answer: To assign a new role to a user, use the PUT /api/users/{userId} endpoint
-with the admin role. The `roles` field replaces all current role assignments.
-Only the `admin` role can modify the roles field.
+Respuesta: Para asignar un nuevo rol a un usuario, use el endpoint PUT /api/users/{userId}
+con el rol admin. El campo `roles` reemplaza todas las asignaciones de roles actuales.
+Solo el rol `admin` puede modificar el campo roles.
 
-Sources:
+Fuentes:
 - docs/api/users-api.md#role-based-access-control
 - docs/architecture/security.md#authorization-model-rbac
 - docs/architecture/components.md#user-service-methods
 ```
 
-## Evaluation
+## Evaluacion
 
-| Metric | Target | Measurement |
+| Metrica | Objetivo | Medicion |
 |---|---|---|
-| **Answer relevance** | > 0.85 | LLM-as-judge scoring |
-| **Context precision** | > 0.90 | Precision@5 of retrieved chunks |
-| **Hallucination rate** | < 2% | Manual review of 100 queries/month |
-| **Latency (p95)** | < 3 seconds | End-to-end from query to response |
+| **Relevancia de la respuesta** | > 0.85 | Puntuacion LLM-como-juez |
+| **Precision del contexto** | > 0.90 | Precision@5 de fragmentos recuperados |
+| **Tasa de alucinacion** | < 2% | Revision manual de 100 consultas/mes |
+| **Latencia (p95)** | < 3 segundos | De extremo a extremo desde la consulta hasta la respuesta |
 
-## Related Documents
+## Documentos Relacionados
 
 - [Embeddings](embeddings.md)
 - [Sources of Truth](sources-of-truth.md)

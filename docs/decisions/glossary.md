@@ -1,26 +1,26 @@
-# Glossary — Users Service
+# Glosario — Users Service
 
-- **Status:** Approved
-- **Owner:** Platform Engineering Team
-- **Last Updated:** 2026-07-20
+- **Estado:** Aprobado
+- **Propietario:** Equipo de Platform Engineering
+- **Última actualización:** 2026-07-20
 
-## Overview
+## Visión General
 
-This glossary defines terminology used throughout the Users Service documentation, codebase, and operational processes. Terms reflect the user management domain, multi-tenancy, RBAC, and event-driven architecture.
+Este glosario define la terminología utilizada en toda la documentación, el código fuente y los procesos operativos del Users Service. Los términos reflejan el dominio de gestión de usuarios, la multi-tenencia, RBAC y la arquitectura basada en eventos.
 
 ---
 
-### Actor
+### Actor (Actor)
 
-The identity (user or service principal) that performed an operation. Every mutation in the Users Service is recorded with an actor identity extracted from the JWT `sub` claim. The actor is distinct from the target user (the subject of the operation). Audit logs always capture both actor and target.
+La identidad (usuario o principal de servicio) que realizó una operación. Cada mutación en el Users Service se registra con una identidad de actor extraída del reclamo `sub` del JWT. El actor es distinto del usuario objetivo (el sujeto de la operación). Los registros de auditoría siempre capturan tanto al actor como al objetivo.
 
-### Auth Events
+### Eventos de Auth (Auth Events)
 
-Events published by the Auth Service to Azure Service Bus topic `auth-events`. The Users Service consumes `user.login`, `user.logout`, and `token.revoked` events to update user session state and trigger lifecycle actions. Auth events carry a trace context for end-to-end distributed tracing across service boundaries.
+Eventos publicados por el Auth Service en el tema `auth-events` de Azure Service Bus. El Users Service consume eventos `user.login`, `user.logout` y `token.revoked` para actualizar el estado de sesión del usuario y desencadenar acciones del ciclo de vida. Los eventos de auth llevan un contexto de traza para trazabilidad distribuida de extremo a extremo a través de los límites del servicio.
 
-### Cursor Pagination
+### Paginación por Cursor (Cursor Pagination)
 
-A pagination technique that uses an opaque cursor (a base64-encoded pointer to a specific record) rather than page numbers or offsets. The Users Service uses cursor-based pagination for all list endpoints. Cursor pagination offers consistent results even when data changes between pages, avoids the performance cost of offset-based pagination for large datasets, and prevents resource enumeration attacks.
+Una técnica de paginación que utiliza un cursor opaco (un puntero codificado en base64 a un registro específico) en lugar de números de página o desplazamientos. El Users Service utiliza paginación basada en cursor para todos los endpoints de listado. La paginación por cursor ofrece resultados consistentes incluso cuando los datos cambian entre páginas, evita el costo de rendimiento de la paginación basada en desplazamiento para grandes conjuntos de datos y previene ataques de enumeración de recursos.
 
 ```json
 {
@@ -33,75 +33,75 @@ A pagination technique that uses an opaque cursor (a base64-encoded pointer to a
 }
 ```
 
-### Entra ID Profile Enrichment
+### Enriquecimiento de Perfil de Entra ID (Entra ID Profile Enrichment)
 
-The asynchronous process of enriching user profiles with data from Microsoft Graph API. When a user is created, the Users Service attempts to fetch additional profile attributes (department, job title, manager, office location, profile photo) from Entra ID using the Microsoft Graph API. Enrichment is non-blocking: user creation succeeds even if the Graph API is unavailable. Enriched data is cached and refreshed on a configurable schedule.
+El proceso asíncrono de enriquecer perfiles de usuario con datos de Microsoft Graph API. Cuando se crea un usuario, el Users Service intenta obtener atributos adicionales del perfil (departamento, título del puesto, gerente, ubicación de oficina, foto de perfil) desde Entra ID usando Microsoft Graph API. El enriquecimiento no es bloqueante: la creación de usuario se realiza incluso si Graph API no está disponible. Los datos enriquecidos se almacenan en caché y se actualizan según un programa configurable.
 
-### Hard-Delete
+### Hard-Delete (Borrado Permanente)
 
-Permanent removal of a user record from the database. The Users Service does not expose a public hard-delete API (see known-limitations.md). Hard-delete is performed by a scheduled purge job that permanently removes users that have been soft-deleted for more than 90 days (the retention period is configurable). Hard-delete is irreversible and is logged as a critical audit event.
+Eliminación permanente de un registro de usuario de la base de datos. El Users Service no expone una API pública de hard-delete (ver known-limitations.md). El hard-delete es realizado por un trabajo programado de purga que elimina permanentemente usuarios que han estado en soft-delete por más de 90 días (el período de retención es configurable). El hard-delete es irreversible y se registra como un evento de auditoría crítico.
 
-### Idempotent Event Processing
+### Procesamiento de Eventos Idempotente (Idempotent Event Processing)
 
-The property that processing the same event multiple times produces the same result as processing it once. The Users Service implements idempotent event processing by tracking processed event IDs in a deduplication store (Redis). If the same auth event is delivered twice (Azure Service Bus at-least-once delivery), the second attempt is silently ignored. This ensures consistency even during consumer restarts or network disruptions.
+La propiedad de que procesar el mismo evento múltiples veces produce el mismo resultado que procesarlo una vez. El Users Service implementa el procesamiento de eventos idempotente mediante el seguimiento de IDs de eventos procesados en un almacén de desduplicación (Redis). Si el mismo evento de auth se entrega dos veces (entrega al menos una vez de Azure Service Bus), el segundo intento se ignora silenciosamente. Esto garantiza consistencia incluso durante reinicios del consumidor o interrupciones de red.
 
-### JWT Validation (Users Service Context)
+### Validación JWT (Contexto del Users Service)
 
-The process of verifying that an incoming JWT was issued by the Auth Service and has not been tampered with. The Users Service validates JWTs by: (1) fetching the Auth Service's public keys from the JWKS endpoint, (2) verifying the JWT signature using the key identified by the `kid` header, (3) checking the JWT expiry (`exp`), (4) validating the `aud` claim matches the Users Service audience, and (5) verifying the JWT has not been revoked (via the token blacklist). JWKS keys are cached for 5 minutes to minimize dependency on the Auth Service.
+El proceso de verificar que un JWT entrante fue emitido por el Auth Service y no ha sido manipulado. El Users Service valida los JWT mediante: (1) obtención de las claves públicas del Auth Service desde el endpoint JWKS, (2) verificación de la firma del JWT usando la clave identificada por el encabezado `kid`, (3) verificación de la expiración del JWT (`exp`), (4) validación de que el reclamo `aud` coincida con la audiencia del Users Service, y (5) verificación de que el JWT no ha sido revocado (mediante la lista negra de tokens). Las claves JWKS se almacenan en caché durante 5 minutos para minimizar la dependencia del Auth Service.
 
-### Multi-Tenancy
+### Multi-Tenencia (Multi-Tenancy)
 
-An architecture where a single Users Service instance serves multiple tenants (organizations or customers) with strict data isolation. Each user record includes a `tenant_id` field that identifies the owning tenant. All queries in the repository layer include a `WHERE tenant_id = @tenantId` filter to prevent cross-tenant data access. The tenant ID is extracted from the JWT claims (not from request parameters) to prevent tenant spoofing.
+Una arquitectura donde una sola instancia del Users Service sirve a múltiples inquilinos (organizaciones o clientes) con estricto aislamiento de datos. Cada registro de usuario incluye un campo `tenant_id` que identifica al inquilino propietario. Todas las consultas en la capa de repositorio incluyen un filtro `WHERE tenant_id = @tenantId` para prevenir el acceso a datos entre inquilinos. El ID de inquilino se extrae de los reclamos del JWT (no de los parámetros de solicitud) para prevenir la suplantación de inquilinos.
 
-### RBAC (Role-Based Access Control)
+### RBAC (Control de Acceso Basado en Roles)
 
-The authorization model used by the Users Service. Three built-in roles define the permission hierarchy:
+El modelo de autorización utilizado por el Users Service. Tres roles incorporados definen la jerarquía de permisos:
 
-| Role | Permissions |
+| Rol | Permisos |
 |---|---|
-| **Admin** | Full access: create/read/update/delete users, manage roles, manage tenant configuration, view audit logs |
-| **Operator** | Operational access: create/read/update users (cannot delete, cannot manage roles or tenant config) |
-| **User** | Self-service access: read own profile, update own profile (future), view own roles |
+| **Admin** | Acceso completo: crear/leer/actualizar/eliminar usuarios, gestionar roles, gestionar configuración de inquilino, ver registros de auditoría |
+| **Operator** | Acceso operativo: crear/leer/actualizar usuarios (no puede eliminar, no puede gestionar roles ni configuración de inquilino) |
+| **User** | Acceso de autoservicio: leer su propio perfil, actualizar su propio perfil (futuro), ver sus propios roles |
 
-Roles are enforced at the middleware level via the `[Authorize(Roles = "...")]` attribute and validated against the JWT `roles` claim. Custom roles with granular permission sets are planned for Q3 2026.
+Los roles se aplican a nivel de middleware mediante el atributo `[Authorize(Roles = "...")]` y se validan contra el reclamo `roles` del JWT. Roles personalizados con conjuntos de permisos granulares están planificados para Q3 2026.
 
-### Role Hierarchy
+### Jerarquía de Roles (Role Hierarchy)
 
-The relationship between RBAC roles where a higher-privilege role inherits the permissions of lower-privilege roles. In the Users Service: Admin inherits Operator permissions, Operator inherits User permissions. Role hierarchy is enforced in the authorization middleware and is not user-configurable in the current implementation.
+La relación entre roles RBAC donde un rol con mayores privilegios hereda los permisos de roles con menores privilegios. En el Users Service: Admin hereda los permisos de Operator, Operator hereda los permisos de User. La jerarquía de roles se aplica en el middleware de autorización y no es configurable por el usuario en la implementación actual.
 
-### Session State
+### Estado de Sesión (Session State)
 
-The record of whether a user is currently "active" (has an active login session) or "inactive" (logged out or session expired). Session state is derived from auth events (login sets state to active, logout sets state to inactive) and stored in the Users Service database. Session state is used for authorization decisions (e.g., deny access to inactive users) and for reporting (e.g., active user counts per tenant).
+El registro de si un usuario está actualmente "activo" (tiene una sesión de inicio de sesión activa) o "inactivo" (cerró sesión o la sesión expiró). El estado de sesión se deriva de los eventos de auth (el inicio de sesión establece el estado como activo, el cierre de sesión establece el estado como inactivo) y se almacena en la base de datos del Users Service. El estado de sesión se utiliza para decisiones de autorización (ej., denegar acceso a usuarios inactivos) y para informes (ej., conteo de usuarios activos por inquilino).
 
-### Soft-Delete
+### Soft-Delete (Borrado Lógico)
 
-A deletion pattern where records are marked as deleted (a `deleted_at` timestamp is set) rather than physically removed from the database. Soft-deleted users are excluded from all query results by default (queries include `WHERE deleted_at IS NULL`). Soft-delete allows data recovery within the retention window (90 days) and provides an audit trail of deletion events. A scheduled purge job permanently removes soft-deleted users after the retention period expires.
+Un patrón de eliminación donde los registros se marcan como eliminados (se establece una marca de tiempo `deleted_at`) en lugar de eliminarse físicamente de la base de datos. Los usuarios en soft-delete se excluyen de todos los resultados de consulta por defecto (las consultas incluyen `WHERE deleted_at IS NULL`). El soft-delete permite la recuperación de datos dentro de la ventana de retención (90 días) y proporciona un registro de auditoría de los eventos de eliminación. Un trabajo programado de purga elimina permanentemente los usuarios en soft-delete después de que expire el período de retención.
 
-### Tenant Isolation
+### Aislamiento de Inquilino (Tenant Isolation)
 
-The enforcement mechanism that prevents users in one tenant from accessing data belonging to another tenant. The Users Service implements tenant isolation at multiple layers:
+El mecanismo de aplicación que evita que usuarios de un inquilino accedan a datos pertenecientes a otro inquilino. El Users Service implementa aislamiento de inquilino en múltiples capas:
 
-1. **Authentication layer:** Tenant ID is embedded in the JWT by the Auth Service and cannot be modified by the client.
-2. **Repository layer:** Every database query includes a `tenant_id` filter parameter.
-3. **Database layer (defense-in-depth):** PostgreSQL Row-Level Security (RLS) policies enforce tenant isolation at the database level, providing protection even if the application layer is bypassed.
-4. **Testing:** Automated integration tests verify that cross-tenant access always returns 403 Forbidden.
+1. **Capa de autenticación:** El ID de inquilino está incrustado en el JWT por el Auth Service y no puede ser modificado por el cliente.
+2. **Capa de repositorio:** Cada consulta a la base de datos incluye un parámetro de filtro `tenant_id`.
+3. **Capa de base de datos (defensa en profundidad):** Las políticas de seguridad a nivel de fila (RLS) de PostgreSQL aplican el aislamiento de inquilino a nivel de base de datos, proporcionando protección incluso si se omite la capa de aplicación.
+4. **Pruebas:** Las pruebas de integración automatizadas verifican que el acceso entre inquilinos siempre devuelva 403 Forbidden.
 
-### Tenant
+### Inquilino (Tenant)
 
-An isolated organizational unit within the Users Service. Each tenant has its own users, roles, configuration settings, and feature flags. Tenants are identified by a UUID `tenant_id` that scopes all operations. Tenants are created via the tenant management API (see roadmap.md).
+Una unidad organizativa aislada dentro del Users Service. Cada inquilino tiene sus propios usuarios, roles, configuraciones y banderas de funcionalidad. Los inquilinos se identifican mediante un `tenant_id` UUID que delimita todas las operaciones. Los inquilinos se crean mediante la API de gestión de inquilinos (ver roadmap.md).
 
-### User Events
+### Eventos de Usuario (User Events)
 
-Events published by the Users Service to Azure Service Bus topic `user-events`. These events notify downstream services about user lifecycle changes: `user.created`, `user.updated`, `user.deleted`, `user.restored`. Each event includes the user ID, actor ID, timestamp, correlation ID, and a payload of changed fields. Consumers include the Audit Service (for audit logging), Notification Service (for email/Slack notifications), and Auth Service (for token invalidation on user deletion).
+Eventos publicados por el Users Service en el tema `user-events` de Azure Service Bus. Estos eventos notifican a los servicios posteriores sobre cambios en el ciclo de vida del usuario: `user.created`, `user.updated`, `user.deleted`, `user.restored`. Cada evento incluye el ID de usuario, ID de actor, marca de tiempo, ID de correlación y una carga útil de campos cambiados. Los consumidores incluyen el Audit Service (para registro de auditoría), Notification Service (para notificaciones por correo electrónico/Slack) y Auth Service (para invalidación de tokens al eliminar usuario).
 
-### User Profile
+### Perfil de Usuario (User Profile)
 
-The collection of user attributes stored and managed by the Users Service. The user profile includes core identity fields (user ID, email, first name, last name), organizational fields (tenant ID, roles, department, job title, manager), and system fields (status, created_at, updated_at, deleted_at, last_login_at).
+La colección de atributos de usuario almacenados y gestionados por el Users Service. El perfil de usuario incluye campos de identidad centrales (ID de usuario, correo electrónico, nombre, apellido), campos organizativos (ID de inquilino, roles, departamento, título del puesto, gerente) y campos del sistema (estado, created_at, updated_at, deleted_at, last_login_at).
 
 ### UUIDv4
 
-Universally Unique Identifier version 4 — a 128-bit identifier generated using random numbers. The Users Service uses UUIDv4 for all resource identifiers (user IDs, tenant IDs, role IDs). UUIDv4 identifiers are non-sequential and cannot be enumerated, providing protection against resource guessing attacks.
+Identificador Único Universal versión 4 — un identificador de 128 bits generado utilizando números aleatorios. El Users Service utiliza UUIDv4 para todos los identificadores de recursos (IDs de usuario, IDs de inquilino, IDs de rol). Los identificadores UUIDv4 no son secuenciales y no pueden ser enumerados, proporcionando protección contra ataques de adivinación de recursos.
 
-### Vertical Scaling
+### Escalamiento Vertical (Vertical Scaling)
 
-Scaling by increasing the resources (CPU, memory) of existing instances rather than adding more instances. The Users Service uses horizontal scaling (adding replicas), but vertical scaling is available as an operational contingency for unexpected load spikes until horizontal scaling catches up.
+Escalamiento mediante el aumento de recursos (CPU, memoria) de instancias existentes en lugar de añadir más instancias. El Users Service utiliza escalamiento horizontal (añadir réplicas), pero el escalamiento vertical está disponible como contingencia operativa para picos de carga inesperados hasta que el escalamiento horizontal se ponga al día.
