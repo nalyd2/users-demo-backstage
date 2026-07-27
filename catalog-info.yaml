@@ -60,7 +60,7 @@ spec:
   owner: platform-engineering
   system: user-management-system
   definition:
-    $text: ./openapi.yaml
+    $openapi: https://raw.githubusercontent.com/nalyd2/users-demo-backstage/main/openapi.yaml
 
 ---
 # ============================================================================
