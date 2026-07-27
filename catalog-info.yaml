@@ -1,16 +1,22 @@
 # ============================================================================
 # Backstage Catalog Entity — Users Service
 # ============================================================================
-# This file registers the users-service component and its associated resources
-# in the Backstage Software Catalog. It follows the Backstage System Model:
+# Registers the users-service component and its resources in Backstage.
 #
-#   System  >  Domain
-#   └─ Component  (this file)
-#      ├─ API  (provided)
-#      └─ Resource  (database)
+# ── IMPORTANT ───────────────────────────────────────────────────────────
+# Domain "identity" and System "user-management-system" are defined GLOBALLY
+# in Backstage's app-config.yaml — NOT here. See:
+#   docs/decisions/ownership.md  (Backstage global configuration section)
+# ─────────────────────────────────────────────────────────────────────────
 #
 # Key relationship: users-service depends on auth-service for JWT validation
 # and consumes authentication events published by auth-service.
+#
+# Allowed kinds at repo-level (catalog.rules default):
+#   Component, API, Resource, Location, Template
+#
+# NOT allowed at repo-level (must be in app-config.yaml):
+#   Domain, System
 #
 # Reference: https://backstage.io/docs/features/software-catalog/
 # ============================================================================
@@ -103,7 +109,6 @@ spec:
   owner: platform-engineering
   system: user-management-system
   domain: identity
-  subcomponentOf: user-management-system
   providesApis:
     - users-api
   dependsOn:
@@ -114,50 +119,7 @@ spec:
 
 ---
 # ============================================================================
-# 3. SYSTEM DEFINITION — User Management System
-# ============================================================================
-apiVersion: backstage.io/v1alpha1
-kind: System
-metadata:
-  name: user-management-system
-  description: |
-    User Management System of the Internal Developer Platform.
-    Handles the complete user lifecycle — onboarding, profile management,
-    role assignments, and offboarding — across all platform services.
-  annotations:
-    backstage.io/techdocs-ref: dir:.
-  tags:
-    - users
-    - identity
-    - lifecycle
-    - platform
-  links:
-    - url: https://backstage.internal/platform/system/user-management-system
-      title: System Overview
-      icon: dashboard
-spec:
-  owner: platform-engineering
-  domain: identity
-
----
-# ============================================================================
-# 4. DOMAIN DEFINITION — Identity
-# ============================================================================
-apiVersion: backstage.io/v1alpha1
-kind: Domain
-metadata:
-  name: identity
-  description: |
-    Identity domain covering all user and service authentication, authorization,
-    and identity lifecycle management across the Internal Developer Platform.
-  annotations:
-    backstage.io/techdocs-ref: dir:.
-spec:
-  owner: platform-engineering
-
----
-# ============================================================================
-# 5. RESOURCE DEFINITION — Users Database
+# 3. RESOURCE DEFINITION — Users Database
 # ============================================================================
 apiVersion: backstage.io/v1alpha1
 kind: Resource
